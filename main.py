@@ -100,24 +100,33 @@ def scrape_url(url, seen_jobs):
         for a in links:
             title = a.get_text(strip=True)
             link = a["href"]
+
+            # Ignore very short or empty titles
             if not title or len(title) < 10:
                 continue
-            if "/Job/" not in link.lower() and "vacancy" not in link.lower():
+
+            # Consider links that contain numeric IDs
+            if not re.search(r'\d+', link):
                 continue
+
             if not relevant_job(title):
                 continue
+
             job_id = extract_job_id(link)
             if job_id in seen_jobs:
                 continue
+
             # New job detected
             print("\n=== NEW JOB FOUND ===")
             print("Title:", title)
             print("Link:", link)
             print("Source:", url)
             print("=====================\n")
+
             send_telegram(f"🚨 New Job Found:\n{title}\n{link}\nSource: {url}")
             save_seen(job_id)
             seen_jobs[job_id] = datetime.now()
+
     except Exception as e:
         print(f"Error scraping {url}: {e}")
 
