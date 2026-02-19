@@ -17,11 +17,10 @@ if not BOT_TOKEN or not CHAT_ID:
 # Job Clerk URLs
 # -----------------------------
 SEARCH_URLS = [
-    "https://www.jobclerk.com/jobs?q=surgery",
-    "https://www.jobclerk.com/jobs?q=emergency"
+    "https://www.jobclerk.com/jobs?q=surgery&grade=Junior&grade=Senior",
+    "https://www.jobclerk.com/jobs?q=emergency&grade=Junior&grade=Senior"
 ]
 
-# Keywords filter
 KEYWORDS = ["emergency", "surgery", "trust doctor", "clinical fellow"]
 
 # Persist seen jobs
@@ -55,27 +54,26 @@ def check_jobs():
             response = requests.get(url, timeout=10)
             soup = BeautifulSoup(response.text, "html.parser")
             
-            # --- NEW: Grab job links inside <h2> or .job-card ---
-            # Adjust selector based on current Job Clerk HTML
-            job_links = soup.select("h2 a, .job-card a")  
-
+            # Grab all <a> links
+            links = soup.find_all("a", href=True)
             jobs_found = 0
-            for link in job_links:
-                job_url = link.get('href')
+
+            for link in links:
+                job_url = link["href"]
                 job_title = link.get_text(strip=True)
-                
-                if not job_url:
-                    continue
-                if not job_url.startswith("http"):
-                    job_url = "https://www.jobclerk.com" + job_url
-                
-                # Keyword filter
-                if any(keyword in job_title.lower() for keyword in KEYWORDS):
-                    if job_url not in seen_jobs:
-                        seen_jobs.add(job_url)
-                        save_seen_jobs()
-                        send_telegram(f"🚨 New Job Posted:\n{job_title}\n{job_url}")
-                        jobs_found += 1
+
+                # Only links containing /job/
+                if "/job/" in job_url:
+                    if not job_url.startswith("http"):
+                        job_url = "https://www.jobclerk.com" + job_url
+
+                    # Keyword filter
+                    if any(keyword in job_title.lower() for keyword in KEYWORDS):
+                        if job_url not in seen_jobs:
+                            seen_jobs.add(job_url)
+                            save_seen_jobs()
+                            send_telegram(f"🚨 New Job Posted:\n{job_title}\n{job_url}")
+                            jobs_found += 1
 
             print(f"Found {jobs_found} jobs on {url}")
 
@@ -86,4 +84,4 @@ def check_jobs():
 print("Bot started. Monitoring Job Clerk URLs...")
 while True:
     check_jobs()
-    time.sleep(180)  # check every 3 minutes
+    time.sleep(60)  # check every 1 minute
