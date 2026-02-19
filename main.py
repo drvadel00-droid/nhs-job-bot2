@@ -1,78 +1,70 @@
 import requests
-import json
+from bs4 import BeautifulSoup
+import time
 import os
-from datetime import datetime, timedelta
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
-SEARCH_URLS = [
-    "https://www.jobclerk.com/jobs?q=surgery&grade=Junior&grade=Senior",
-    "https://www.jobclerk.com/jobs?q=emergency&grade=Junior&grade=Senior"
+KEYWORDS = ["doctor", "surgery", "emergency", "clinical", "trust", "specialty"]
+
+URLS = [
+    "https://www.healthjobsuk.com/job_list?JobSearch_d=534",
+    "https://jobs.hscni.net/Search?SearchCatID=63"
 ]
 
-KEYWORDS = ["emergency", "surgery", "trust doctor", "clinical fellow"]
+sent_jobs = set()
 
-SEEN_FILE = "seen_jobs.json"
-if os.path.exists(SEEN_FILE):
-    with open(SEEN_FILE, "r") as f:
-        seen_jobs = set(json.load(f))
-else:
-    seen_jobs = set()
-
-def save_seen_jobs():
-    with open(SEEN_FILE, "w") as f:
-        json.dump(list(seen_jobs), f)
 
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    data = {"chat_id": CHAT_ID, "text": message}
-    resp = requests.post(url, data=data)
-    if resp.status_code != 200:
-        print("Telegram send error:", resp.text)
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": message
+    }
+    requests.post(url, data=payload)
 
-def fetch_jobs():
-    global seen_jobs
-    for url in SEARCH_URLS:
+
+def check_jobs():
+    for url in URLS:
         try:
-            resp = requests.get(url)
-            if resp.status_code != 200:
-                print(f"Failed to fetch {url}")
-                continue
+            response = requests.get(url, timeout=10)
+            soup = BeautifulSoup(response.text, "html.parser")
 
-            html = resp.text
+            links = soup.find_all("a")
 
-            # TEMP: crude way to find job links in HTML
-            # We'll improve this if the site has a JSON/API
-            jobs_found = 0
-            for line in html.splitlines():
-                if "/job/" in line.lower():
-                    # crude extraction of URL
-                    start = line.find("/job/")
-                    end = line.find('"', start)
-                    job_url = line[start:end]
+            for link in links:
+                title = link.get_text(strip=True)
+                href = link.get("href")
 
-                    if not job_url.startswith("http"):
-                        job_url = "https://www.jobclerk.com" + job_url
+                if not title or not href:
+                    continue
 
-                    # crude extraction of title
-                    title_start = line.find(">") + 1
-                    title_end = line.find("<", title_start)
-                    job_title = line[title_start:title_end].strip()
+                title_lower = title.lower()
 
-                    if not any(k in job_title.lower() for k in KEYWORDS):
-                        continue
+                # Ignore consultants
+                if "consultant" in title_lower:
+                    continue
 
-                    if job_url not in seen_jobs:
-                        seen_jobs.add(job_url)
-                        save_seen_jobs()
-                        send_telegram(f"🚨 Job Found:\n{job_title}\n{job_url}")
-                        jobs_found += 1
+                # Match keywords
+                if any(word in title_lower for word in KEYWORDS):
 
-            print(f"Found {jobs_found} matching jobs on {url}")
+                    full_link = href if href.startswith("http") else url.split("/")[0] + "//" + url.split("/")[2] + href
+
+                    if full_link not in sent_jobs:
+                        sent_jobs.add(full_link)
+
+                        message = f"New Job Found:\n{title}\n{full_link}"
+                        send_telegram(message)
+                        print("Sent:", title)
 
         except Exception as e:
-            print(f"Error fetching {url}: {e}")
+            print("Error fetching:", url, e)
 
-# Run once for testing
-fetch_jobs()
+
+if __name__ == "__main__":
+    print("Bot started. Monitoring jobs...")
+
+    while True:
+        check_jobs()
+        time.sleep(300)  # Check every 5 minutes
