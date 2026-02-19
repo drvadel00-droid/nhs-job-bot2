@@ -1,13 +1,18 @@
 import requests
 from bs4 import BeautifulSoup
 import time
-import os
+import datetime
+import re
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
+# ---------------- CONFIG ---------------- #
+
+CHECK_INTERVAL = 120  # 2 minutes
 
 URLS = [
-    # England (NHS Jobs / TRAC publishing)
+    # Broad HealthJobsUK
+    "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=94511",
+
+    # NHS Jobs England
     "https://www.jobs.nhs.uk/candidate/search/results?keyword=doctor&sort=publicationDateDesc",
 
     # Scotland
@@ -17,8 +22,7 @@ URLS = [
     "https://jobs.hscni.net/Search?SearchCatID=0"
 ]
 
-KEYWORDS = [
-    # Specialties
+SPECIALTY_KEYWORDS = [
     "general surgery",
     "trauma",
     "orthopaedic",
@@ -29,9 +33,10 @@ KEYWORDS = [
     "internal medicine",
     "general medicine",
     "emergency medicine",
-    "emergency department",
+    "emergency department"
+]
 
-    # Grades
+GRADE_KEYWORDS = [
     "junior",
     "specialty doctor",
     "trust doctor",
@@ -46,64 +51,94 @@ KEYWORDS = [
     "ct2"
 ]
 
-seen_jobs = set()
+EXCLUDE_KEYWORDS = [
+    "consultant",
+    "nurse",
+    "midwife",
+    "pharmacist",
+    "physiotherapist",
+    "radiographer",
+    "healthcare assistant",
+    "admin",
+    "manager",
+    "director"
+]
 
+# ---------------------------------------- #
 
-def send_telegram(message):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": message}
-    requests.post(url, data=payload)
+def load_seen():
+    try:
+        with open("seen_jobs.txt", "r") as f:
+            return set(f.read().splitlines())
+    except:
+        return set()
 
+def save_seen(job_id):
+    with open("seen_jobs.txt", "a") as f:
+        f.write(job_id + "\n")
 
-def process_page(base_url, soup):
-    links = soup.find_all("a")
+def is_recent(text):
+    text = text.lower()
+    return "today" in text or "yesterday" in text or "hour" in text
 
-    for link in links:
-        title = link.get_text(strip=True)
-        href = link.get("href")
+def relevant_job(title):
+    title_lower = title.lower()
 
-        if not title or not href:
-            continue
+    if any(ex in title_lower for ex in EXCLUDE_KEYWORDS):
+        return False
 
-        title_lower = title.lower()
+    specialty_match = any(sp in title_lower for sp in SPECIALTY_KEYWORDS)
+    grade_match = any(gr in title_lower for gr in GRADE_KEYWORDS)
 
-        # Ignore consultant jobs
-        if "consultant" in title_lower:
-            continue
+    return specialty_match and grade_match
 
-        # Must match at least one keyword
-        if any(k in title_lower for k in KEYWORDS):
+def extract_job_id(link):
+    match = re.search(r'\d+', link)
+    return match.group() if match else link
 
-            if href.startswith("http"):
-                full_link = href
-            else:
-                domain = base_url.split("/")[0] + "//" + base_url.split("/")[2]
-                full_link = domain + href
+def check_site(url, seen_jobs):
+    print(f"Checking {url}")
 
-            if full_link not in seen_jobs:
-                seen_jobs.add(full_link)
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, headers=headers, timeout=15)
+        soup = BeautifulSoup(response.text, "html.parser")
 
-                message = f"🚨 New Doctor Job Found:\n\n{title}\n\n{full_link}"
-                send_telegram(message)
+        for a in soup.find_all("a", href=True):
+            title = a.get_text(strip=True)
+            link = a["href"]
 
-                print("Sent:", title)
+            if not title or len(title) < 5:
+                continue
 
+            if not relevant_job(title):
+                continue
 
-def check_all_sites():
-    for url in URLS:
-        try:
-            print("Checking:", url)
-            resp = requests.get(url, timeout=15)
-            soup = BeautifulSoup(resp.text, "html.parser")
-            process_page(url, soup)
+            job_id = extract_job_id(link)
 
-        except Exception as e:
-            print("Error checking", url, ":", e)
+            if job_id in seen_jobs:
+                continue
 
+            print("NEW JOB FOUND:")
+            print(title)
+            print(link)
+            print("------")
 
-if __name__ == "__main__":
-    print("🚀 Bot started. Monitoring UK jobs every 2 minutes...")
+            save_seen(job_id)
+            seen_jobs.add(job_id)
+
+    except Exception as e:
+        print(f"Error checking {url}: {e}")
+
+def main():
+    print("Bot started...")
+    seen_jobs = load_seen()
 
     while True:
-        check_all_sites()
-        time.sleep(120)  # 2 minutes
+        for url in URLS:
+            check_site(url, seen_jobs)
+
+        time.sleep(CHECK_INTERVAL)
+
+if __name__ == "__main__":
+    main()
