@@ -4,18 +4,12 @@ import json
 import requests
 from playwright.sync_api import sync_playwright
 
-# -----------------------------
-# Telegram Setup
-# -----------------------------
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
 if not BOT_TOKEN or not CHAT_ID:
     raise ValueError("BOT_TOKEN or CHAT_ID not set!")
 
-# -----------------------------
-# Job Clerk URLs
-# -----------------------------
 SEARCH_URLS = [
     "https://www.jobclerk.com/jobs?q=surgery&grade=Junior&grade=Senior",
     "https://www.jobclerk.com/jobs?q=emergency&grade=Junior&grade=Senior"
@@ -23,7 +17,7 @@ SEARCH_URLS = [
 
 KEYWORDS = ["emergency", "surgery", "trust doctor", "clinical fellow"]
 
-# Persist seen jobs
+# Track already seen jobs
 SEEN_FILE = "seen_jobs.json"
 if os.path.exists(SEEN_FILE):
     with open(SEEN_FILE, "r") as f:
@@ -35,7 +29,6 @@ def save_seen_jobs():
     with open(SEEN_FILE, "w") as f:
         json.dump(list(seen_jobs), f)
 
-# Send Telegram alert
 def send_telegram(message):
     try:
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -46,13 +39,11 @@ def send_telegram(message):
     except Exception as e:
         print("Telegram error:", e)
 
-# -----------------------------
-# Scrape Job Clerk using Playwright
-# -----------------------------
 def check_jobs():
     global seen_jobs
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        # Important: --no-sandbox prevents crashes on Railway
+        browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
         page = browser.new_page()
 
         for url in SEARCH_URLS:
@@ -60,7 +51,6 @@ def check_jobs():
                 page.goto(url, timeout=60000)
                 page.wait_for_timeout(5000)  # wait for JS to load
 
-                # Grab all <a> links
                 links = page.query_selector_all("a")
                 jobs_found = 0
 
@@ -73,8 +63,7 @@ def check_jobs():
                     if not job_url.startswith("http"):
                         job_url = "https://www.jobclerk.com" + job_url
 
-                    # Keyword filter
-                    if not any(keyword in job_title.lower() for keyword in KEYWORDS):
+                    if not any(k in job_title.lower() for k in KEYWORDS):
                         continue
 
                     if job_url not in seen_jobs:
@@ -90,9 +79,6 @@ def check_jobs():
 
         browser.close()
 
-# -----------------------------
-# Main loop
-# -----------------------------
 print("Bot started. Monitoring Job Clerk URLs...")
 while True:
     check_jobs()
