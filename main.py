@@ -1,8 +1,9 @@
-import requests
-from bs4 import BeautifulSoup
+import os
 import time
 import json
-import os
+from datetime import datetime, timedelta
+import requests
+from playwright.sync_api import sync_playwright
 
 # -----------------------------
 # Telegram Setup
@@ -21,7 +22,6 @@ SEARCH_URLS = [
     "https://www.jobclerk.com/jobs?q=emergency&grade=Junior&grade=Senior"
 ]
 
-# Keywords filter
 KEYWORDS = ["emergency", "surgery", "trust doctor", "clinical fellow"]
 
 # Persist seen jobs
@@ -48,50 +48,52 @@ def send_telegram(message):
         print("Telegram error:", e)
 
 # -----------------------------
-# Job Scraper
+# Scrape Job Clerk using Playwright
 # -----------------------------
 def check_jobs():
     global seen_jobs
-    for url in SEARCH_URLS:
-        try:
-            response = requests.get(url, timeout=10)
-            soup = BeautifulSoup(response.text, "html.parser")
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
 
-            # Grab all <a> links
-            links = soup.find_all("a", href=True)
-            jobs_found = 0
+        for url in SEARCH_URLS:
+            try:
+                page.goto(url, timeout=60000)
+                page.wait_for_timeout(5000)  # wait 5 sec for JS to load
 
-            for link in links:
-                job_url = link["href"]
-                job_title = link.get_text(strip=True)
+                # Grab all <a> links
+                links = page.query_selector_all("a")
+                jobs_found = 0
 
-                # Only links containing /job/
-                if "/job/" not in job_url:
-                    continue
-                if not job_url.startswith("http"):
-                    job_url = "https://www.jobclerk.com" + job_url
+                for link in links:
+                    job_title = link.inner_text().strip()
+                    job_url = link.get_attribute("href")
 
-                # Keyword filter
-                if not any(keyword in job_title.lower() for keyword in KEYWORDS):
-                    continue
+                    if not job_url or "/job/" not in job_url:
+                        continue
+                    if not job_url.startswith("http"):
+                        job_url = "https://www.jobclerk.com" + job_url
 
-                # --------------------------
-                # TEMP: ignore job date for testing
-                # --------------------------
+                    # Keyword filter
+                    if not any(keyword in job_title.lower() for keyword in KEYWORDS):
+                        continue
 
-                # Send Telegram if not seen
-                if job_url not in seen_jobs:
-                    seen_jobs.add(job_url)
-                    save_seen_jobs()
-                    send_telegram(f"🚨 Job Found:\n{job_title}\n{job_url}")
-                    jobs_found += 1
+                    if job_url not in seen_jobs:
+                        seen_jobs.add(job_url)
+                        save_seen_jobs()
+                        send_telegram(f"🚨 Job Found:\n{job_title}\n{job_url}")
+                        jobs_found += 1
 
-            print(f"Found {jobs_found} matching jobs on {url}")
+                print(f"Found {jobs_found} matching jobs on {url}")
 
-        except Exception as e:
-            print(f"Error checking {url}: {e}")
+            except Exception as e:
+                print(f"Error checking {url}: {e}")
 
+        browser.close()
+
+# -----------------------------
 # Main loop
+# -----------------------------
 print("Bot started. Monitoring Job Clerk URLs...")
 while True:
     check_jobs()
