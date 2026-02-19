@@ -11,7 +11,7 @@ from threading import Thread
 BOT_TOKEN = os.environ.get("BOT_TOKEN")  # Telegram Bot Token
 CHAT_ID = os.environ.get("CHAT_ID")      # Telegram Chat ID
 
-CHECK_INTERVAL = 120  # seconds
+CHECK_INTERVAL = 120  # seconds (2 minutes)
 
 # Sites to monitor
 URLS = [
@@ -23,12 +23,6 @@ URLS = [
     "https://apply.jobs.scot.nhs.uk/Home/Search",
     # Northern Ireland
     "https://jobs.hscni.net/Search?SearchCatID=0"
-]
-
-# Google search queries (advanced)
-GOOGLE_QUERIES = [
-    'site:jobs.nhs.uk "Junior Doctor" OR "Specialty Doctor" OR "Trust Doctor" OR "Clinical Fellow"',
-    'site:healthjobsuk.com "Junior Doctor" OR "Specialty Doctor" OR "Trust Doctor" OR "Clinical Fellow"'
 ]
 
 SPECIALTY_KEYWORDS = [
@@ -47,13 +41,11 @@ EXCLUDE_KEYWORDS = [
     "radiographer", "healthcare assistant", "admin", "manager", "director"
 ]
 
-# File to store seen jobs with timestamps
 SEEN_FILE = "seen_jobs.txt"
 MAX_JOB_AGE_DAYS = 60  # clean old IDs after 60 days
 
 # ---------------------------------------- #
 
-# Load seen jobs
 def load_seen():
     seen = {}
     if os.path.exists(SEEN_FILE):
@@ -65,12 +57,10 @@ def load_seen():
                     seen[job_id] = datetime.fromisoformat(ts)
     return seen
 
-# Save new job
 def save_seen(job_id):
     with open(SEEN_FILE, "a") as f:
         f.write(f"{job_id}||{datetime.now().isoformat()}\n")
 
-# Clean old jobs
 def clean_seen(seen_jobs):
     cutoff = datetime.now() - timedelta(days=MAX_JOB_AGE_DAYS)
     new_seen = {jid: ts for jid, ts in seen_jobs.items() if ts >= cutoff}
@@ -79,7 +69,6 @@ def clean_seen(seen_jobs):
             f.write(f"{jid}||{ts.isoformat()}\n")
     return new_seen
 
-# Check if job matches specialty and grade filters
 def relevant_job(title):
     title_lower = title.lower()
     if any(ex in title_lower for ex in EXCLUDE_KEYWORDS):
@@ -88,12 +77,10 @@ def relevant_job(title):
     grade_match = any(gr in title_lower for gr in GRADE_KEYWORDS)
     return specialty_match and grade_match
 
-# Extract numeric job ID from link
 def extract_job_id(link):
     match = re.search(r'\d+', link)
     return match.group() if match else link
 
-# Send Telegram alert
 def send_telegram(message):
     if not BOT_TOKEN or not CHAT_ID:
         return
@@ -104,11 +91,10 @@ def send_telegram(message):
     except:
         pass
 
-# Scrape a single URL
 def scrape_url(url, seen_jobs):
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(url, headers=headers, timeout=15)
+        response = requests.get(url, headers=headers, timeout=20)
         soup = BeautifulSoup(response.text, "html.parser")
         links = soup.find_all("a", href=True)
         for a in links:
@@ -135,53 +121,15 @@ def scrape_url(url, seen_jobs):
     except Exception as e:
         print(f"Error scraping {url}: {e}")
 
-# Google search monitoring
-def scrape_google(query, seen_jobs):
-    try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        search_url = f"https://www.google.com/search?q={requests.utils.quote(query)}"
-        resp = requests.get(search_url, headers=headers, timeout=15)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        for a in soup.find_all("a", href=True):
-            link = a["href"]
-            if "url?q=" in link:
-                url = re.search(r"url\?q=(https?://[^&]+)", link)
-                if url:
-                    url = url.group(1)
-                    job_id = extract_job_id(url)
-                    if job_id in seen_jobs:
-                        continue
-                    title = a.get_text(strip=True)
-                    if not title or not relevant_job(title):
-                        continue
-                    print("\n=== NEW JOB FOUND (Google) ===")
-                    print("Title:", title)
-                    print("Link:", url)
-                    print("===============================\n")
-                    send_telegram(f"🚨 New Job Found (Google):\n{title}\n{url}")
-                    save_seen(job_id)
-                    seen_jobs[job_id] = datetime.now()
-    except Exception as e:
-        print(f"Error scraping Google for query '{query}': {e}")
-
-# Main loop
 def main():
-    print("🚀 Ultimate NHS Job Bot started...")
+    print("🚀 NHS Job Bot started...")
     seen_jobs = load_seen()
     seen_jobs = clean_seen(seen_jobs)
 
     while True:
         threads = []
-
-        # Scrape all URLs
         for url in URLS:
             t = Thread(target=scrape_url, args=(url, seen_jobs))
-            t.start()
-            threads.append(t)
-
-        # Scrape Google queries
-        for query in GOOGLE_QUERIES:
-            t = Thread(target=scrape_google, args=(query, seen_jobs))
             t.start()
             threads.append(t)
 
