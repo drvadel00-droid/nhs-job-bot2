@@ -1,7 +1,6 @@
 import os
 import time
 import json
-from datetime import datetime, timedelta
 import requests
 from playwright.sync_api import sync_playwright
 
@@ -59,7 +58,7 @@ def check_jobs():
         for url in SEARCH_URLS:
             try:
                 page.goto(url, timeout=60000)
-                page.wait_for_timeout(5000)  # wait 5 sec for JS to load
+                page.wait_for_timeout(5000)  # wait for JS to load
 
                 # Grab all <a> links
                 links = page.query_selector_all("a")
@@ -97,4 +96,4 @@ def check_jobs():
 print("Bot started. Monitoring Job Clerk URLs...")
 while True:
     check_jobs()
-    time.sleep(60)  # check every 1 minute
+    time.sleep(60)
