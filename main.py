@@ -50,28 +50,26 @@ def send_telegram(message):
 
 # Check Job Clerk Pages
 def check_jobs():
-    global seen_jobs
     for url in SEARCH_URLS:
         try:
             response = requests.get(url, timeout=10)
             soup = BeautifulSoup(response.text, "html.parser")
             
-            # Scrape all <a> links
+            # Grab all <a> links
             links = soup.find_all("a", href=True)
             
+            jobs_found = 0
             for link in links:
                 job_url = link["href"]
-                if "/job/" in job_url:  # Job URLs contain "/job/"
+                if "/job/" in job_url:
                     if not job_url.startswith("http"):
                         job_url = "https://www.jobclerk.com" + job_url
                     
-                    # Check keywords in job title
                     if any(keyword in link.text.lower() for keyword in KEYWORDS):
-                        if job_url not in seen_jobs:
-                            seen_jobs.add(job_url)
-                            save_seen_jobs()
-                            # Include job title in Telegram message
-                            send_telegram(f"🚨 New Job Posted:\nTitle: {link.text}\nLink: {job_url}")
+                        # TEMPORARILY ignore seen_jobs
+                        send_telegram(f"🚨 TEST JOB ALERT:\n{link.text.strip()}\n{job_url}")
+                        jobs_found += 1
+            print(f"Found {jobs_found} jobs on {url}")
         except Exception as e:
             print(f"Error checking {url}: {e}")
 
