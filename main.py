@@ -19,10 +19,41 @@ URLS = [
     "https://www.jobs.nhs.uk/candidate/search/results?keyword=doctor&sort=publicationDateDesc",
 
     # Northern Ireland
-    "https://jobs.hscni.net/Search?SearchCatID=0"
+    "https://jobs.hscni.net/Search?SearchCatID=0",
+
+    # Scotland NHS jobs (public page)
+    "https://apply.jobs.scot.nhs.uk/Home/Search"
 ]
 
-# ---------------- HELPER FUNCTIONS ---------------- #
+# ---------------- FILTER LOGIC ---------------- #
+
+MEDICAL_SPECIALTIES = [
+    "medicine", "internal medicine", "general medicine", "paediatric", "pediatric",
+    "surgery", "general surgery", "trauma", "orthopaedic", "orthopedic", "plastic",
+    "emergency medicine", "emergency department", "oncology", "cardiology",
+    "respiratory", "gastroenterology", "neurology", "obstetrics", "gynaecology",
+    "haematology"
+]
+
+GRADE_KEYWORDS = [
+    "foundation", "fy1", "fy2", "f1", "f2",
+    "ct1", "ct2", "ct3", "core trainee",
+    "st1", "st2", "st3",
+    "registrar",
+    "sas doctor", "specialty doctor", "trust doctor",
+    "clinical fellow", "junior fellow", "research fellow",
+    "teaching fellow", "locum doctor"
+]
+
+EXCLUDE_KEYWORDS = [
+    "consultant", "st4", "st5", "st6", "st7",
+    "advanced trainee", "higher specialty",
+    "nurse", "midwife", "psychologist", "assistant",
+    "admin", "radiographer", "physiotherapist", "manager",
+    "director", "healthcare assistant"
+]
+
+# ---------------- UTILS ---------------- #
 
 def load_seen():
     try:
@@ -49,57 +80,33 @@ def extract_job_id(link):
     match = re.search(r'\d+', link)
     return match.group() if match else link
 
-# ---------------- FILTER LOGIC ---------------- #
-
 def relevant_job(title):
     title_lower = title.lower()
-
-    EXCLUDE_KEYWORDS = [
-        "consultant", "st4", "st5", "st6", "st7",
-        "advanced trainee", "higher specialty",
-        "nurse", "midwife", "pharmacist", "physiotherapist",
-        "radiographer", "healthcare assistant", "admin",
-        "manager", "director"
-    ]
-
-    GRADE_KEYWORDS = [
-        "foundation", "fy1", "fy2", "f1", "f2",
-        "ct1", "ct2", "ct3", "core trainee",
-        "st1", "st2", "st3",
-        "sho", "senior house officer",
-        "registrar",
-        "sas doctor", "specialty doctor", "trust doctor",
-        "clinical fellow", "junior fellow", "research fellow",
-        "teaching fellow", "locum doctor"
-    ]
-
     if any(ex in title_lower for ex in EXCLUDE_KEYWORDS):
         return False
-
+    if not any(sp in title_lower for sp in MEDICAL_SPECIALTIES):
+        return False
     if not any(gr in title_lower for gr in GRADE_KEYWORDS):
         return False
-
     return True
 
-# ---------------- DATE FILTER ---------------- #
-
 def is_recent(posted_date_str):
-    """
-    Only accept jobs posted from yesterday onwards
-    Supports ISO format or day/month/year
-    """
     try:
         posted_date = datetime.datetime.fromisoformat(posted_date_str.replace("Z",""))
     except:
         try:
             posted_date = datetime.datetime.strptime(posted_date_str, "%d/%m/%Y")
         except:
-            return True  # Unknown format, include anyway
-
+            return True  # If no date, consider it recent
     yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
     return posted_date >= yesterday
 
-# ---------------- SITE SCRAPER ---------------- #
+def normalize_link(link, base):
+    if link.startswith("/"):
+        return base + link
+    return link
+
+# ---------------- SITE CHECK ---------------- #
 
 def get_job_date_healthjobs(link):
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -121,13 +128,13 @@ def check_site(url, seen_jobs):
         soup = BeautifulSoup(response.text, "html.parser")
         job_links = soup.find_all("a", href=True)
 
+        base_url = re.match(r"(https?://[^/]+)", url).group(1)
+
         for a in job_links:
             title = a.get_text(strip=True)
-            link = a["href"]
+            link = normalize_link(a["href"], base_url)
 
             if not title or len(title) < 10:
-                continue
-            if "/job/" not in link.lower() and "vacancy" not in link.lower():
                 continue
             if not relevant_job(title):
                 continue
@@ -136,82 +143,65 @@ def check_site(url, seen_jobs):
             if job_id in seen_jobs:
                 continue
 
-            # Fetch posting date
             posted_date_str = get_job_date_healthjobs(link)
             if posted_date_str and not is_recent(posted_date_str):
                 continue
 
-            print("\n=== NEW JOB FOUND ===")
-            print("Title:", title)
-            print("Link:", link)
-            print("=====================\n")
+            # Telegram notification
+            message = f"🚨 New Job Found!\n\n🏥 {title}\n🔗 Apply: {link}"
+            print(message + "\n")
+            send_telegram(message)
 
-            send_telegram(f"🚨 New Job Found:\n{title}\n{link}")
             save_seen(job_id)
             seen_jobs.add(job_id)
 
     except Exception as e:
         print(f"Error checking {url}: {e}")
 
-# ---------------- SCOTLAND API ---------------- #
+# ---------------- SCOTLAND CHECK ---------------- #
 
-def check_scotland_api(seen_jobs):
-    print("Checking Scotland API...")
+def check_scotland(seen_jobs):
+    print("Checking Scotland jobs...")
+    url = "https://apply.jobs.scot.nhs.uk/Home/Search"
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
-        url = "https://apply.jobs.scot.nhs.uk/Account/Search"
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "Keyword": "",
-            "Location": "",
-            "Radius": 0,
-            "SortBy": "Date",
-            "SortDescending": True,
-            "Page": 1
-        }
+        response = requests.get(url, headers=headers, timeout=15)
+        soup = BeautifulSoup(response.text, "html.parser")
+        a_tags = soup.find_all("a", href=True)
 
-        response = requests.post(url, json=payload, headers=headers, timeout=15)
-        if response.status_code != 200:
-            print("Scotland API failed:", response.status_code)
-            return
-
-        data = response.json()
-        for job in data.get("Results", []):
-            title = job.get("JobTitle", "")
-            job_id = str(job.get("VacancyId", ""))
-            link = f"https://apply.jobs.scot.nhs.uk/Home/Job/{job_id}"
-
-            posted_date_str = job.get("DatePosted", "")
-            if posted_date_str and not is_recent(posted_date_str):
+        for a in a_tags:
+            href = a['href']
+            if "JobDetail?JobId=" not in href:
                 continue
+            link = normalize_link(href, "https://apply.jobs.scot.nhs.uk")
+            title = a.get_text(strip=True)
             if not relevant_job(title):
                 continue
+            job_id = extract_job_id(link)
             if job_id in seen_jobs:
                 continue
 
-            print("\n=== NEW SCOTLAND JOB ===")
-            print("Title:", title)
-            print("Link:", link)
-            print("========================\n")
-
-            send_telegram(f"🚨 Scotland Job:\n{title}\n{link}")
+            # Scotland does not expose date in HTML easily, assume recent
+            message = f"🚨 Scotland Job Found!\n\n🏥 {title}\n🔗 Apply: {link}"
+            print(message + "\n")
+            send_telegram(message)
             save_seen(job_id)
             seen_jobs.add(job_id)
 
     except Exception as e:
-        print("Error checking Scotland API:", e)
+        print("Error checking Scotland:", e)
 
 # ---------------- MAIN LOOP ---------------- #
 
 def main():
-    print("🚀 Ultimate NHS Job Bot started...")
+    print("🚀 NHS Job Bot started...")
     seen_jobs = load_seen()
     while True:
         for url in URLS:
-            check_site(url, seen_jobs)
-        check_scotland_api(seen_jobs)
+            if "apply.jobs.scot.nhs.uk" in url:
+                check_scotland(seen_jobs)
+            else:
+                check_site(url, seen_jobs)
         time.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
