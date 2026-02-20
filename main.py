@@ -4,7 +4,7 @@ import time
 import re
 
 # ---------------- CONFIG ---------------- #
-BOT_TOKEN = "<8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"        # Replace with your bot token
+BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"        # Replace with your bot token
 CHAT_ID = "-1003888963521"            # Your private channel numeric ID
 CHECK_INTERVAL = 120                  # seconds
 
