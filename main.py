@@ -6,7 +6,6 @@ import os
 import datetime
 
 # ---------------- CONFIG ---------------- #
-
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 CHECK_INTERVAL = 120  # seconds
@@ -26,7 +25,6 @@ URLS = [
 ]
 
 # ---------------- FILTER LOGIC ---------------- #
-
 MEDICAL_SPECIALTIES = [
     "medicine", "internal medicine", "general medicine", "paediatric", "pediatric",
     "surgery", "general surgery", "trauma", "orthopaedic", "orthopedic", "plastic",
@@ -54,7 +52,6 @@ EXCLUDE_KEYWORDS = [
 ]
 
 # ---------------- UTILS ---------------- #
-
 def load_seen():
     try:
         with open("seen_jobs.txt", "r") as f:
@@ -90,36 +87,12 @@ def relevant_job(title):
         return False
     return True
 
-def is_recent(posted_date_str):
-    try:
-        posted_date = datetime.datetime.fromisoformat(posted_date_str.replace("Z",""))
-    except:
-        try:
-            posted_date = datetime.datetime.strptime(posted_date_str, "%d/%m/%Y")
-        except:
-            return True  # If no date, consider it recent
-    yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
-    return posted_date >= yesterday
-
 def normalize_link(link, base):
     if link.startswith("/"):
         return base + link
     return link
 
 # ---------------- SITE CHECK ---------------- #
-
-def get_job_date_healthjobs(link):
-    headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        resp = requests.get(link, headers=headers, timeout=10)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        date_tag = soup.find("time")
-        if date_tag:
-            return date_tag.get("datetime", "")
-    except:
-        return ""
-    return ""
-
 def check_site(url, seen_jobs):
     print(f"Checking {url}")
     try:
@@ -134,8 +107,13 @@ def check_site(url, seen_jobs):
             title = a.get_text(strip=True)
             link = normalize_link(a["href"], base_url)
 
-            if not title or len(title) < 10:
+            if not title or len(title) < 5:
                 continue
+
+            # NHS Jobs England may have links without '/Job/', just ensure link has digits
+            if not re.search(r"\d+", link):
+                continue
+
             if not relevant_job(title):
                 continue
 
@@ -143,11 +121,7 @@ def check_site(url, seen_jobs):
             if job_id in seen_jobs:
                 continue
 
-            posted_date_str = get_job_date_healthjobs(link)
-            if posted_date_str and not is_recent(posted_date_str):
-                continue
-
-            # Telegram notification
+            # Treat all jobs as recent for NHS Jobs England
             message = f"🚨 New Job Found!\n\n🏥 {title}\n🔗 Apply: {link}"
             print(message + "\n")
             send_telegram(message)
@@ -159,7 +133,6 @@ def check_site(url, seen_jobs):
         print(f"Error checking {url}: {e}")
 
 # ---------------- SCOTLAND CHECK ---------------- #
-
 def check_scotland(seen_jobs):
     print("Checking Scotland jobs...")
     url = "https://apply.jobs.scot.nhs.uk/Home/Search"
@@ -181,7 +154,6 @@ def check_scotland(seen_jobs):
             if job_id in seen_jobs:
                 continue
 
-            # Scotland does not expose date in HTML easily, assume recent
             message = f"🚨 Scotland Job Found!\n\n🏥 {title}\n🔗 Apply: {link}"
             print(message + "\n")
             send_telegram(message)
@@ -192,7 +164,6 @@ def check_scotland(seen_jobs):
         print("Error checking Scotland:", e)
 
 # ---------------- MAIN LOOP ---------------- #
-
 def main():
     print("🚀 NHS Job Bot started...")
     seen_jobs = load_seen()
