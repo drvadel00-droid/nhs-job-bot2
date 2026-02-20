@@ -2,11 +2,12 @@ import requests
 from bs4 import BeautifulSoup
 import time
 import re
+import os
 
 # ---------------- CONFIG ---------------- #
-BOT_TOKEN = "<YOUR_BOT_TOKEN>"        # Replace with your bot token
-CHAT_ID = "-1003888963521"            # Your private channel numeric ID
-CHECK_INTERVAL = 120                  # seconds
+BOT_TOKEN = os.environ.get("BOT_TOKEN")  # Put your bot token here if not using env
+CHAT_ID = os.environ.get("CHAT_ID")      # "-1003888963521" or from env
+CHECK_INTERVAL = 120  # seconds
 
 URLS = [
     # HealthJobsUK
@@ -18,7 +19,7 @@ URLS = [
     # Northern Ireland
     "https://jobs.hscni.net/Search?SearchCatID=0",
 
-    # Scotland NHS jobs
+    # Scotland NHS jobs (manual check)
     "https://apply.jobs.scot.nhs.uk/Home/Search"
 ]
 
@@ -46,7 +47,7 @@ EXCLUDE_KEYWORDS = [
     "advanced trainee", "higher specialty",
     "nurse", "midwife", "psychologist", "assistant",
     "admin", "radiographer", "physiotherapist", "manager",
-    "director", "healthcare assistant", "lead"
+    "director", "healthcare assistant"
 ]
 
 # ---------------- UTILS ---------------- #
@@ -63,15 +64,15 @@ def save_seen(job_id):
 
 def send_telegram(message):
     if not BOT_TOKEN or not CHAT_ID:
-        print("Telegram not configured")
         return
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
     try:
-        r = requests.post(url, data=payload, timeout=10)
-        print(f"Telegram response: {r.status_code}")
+        response = requests.post(url, data=payload, timeout=10)
+        if response.status_code != 200:
+            print(f"Telegram error {response.status_code}: {response.text}")
     except Exception as e:
-        print("Telegram send error:", e)
+        print("Telegram exception:", e)
 
 def extract_job_id(link):
     match = re.search(r'\d+', link)
@@ -118,7 +119,10 @@ def check_site(url, seen_jobs):
             if job_id in seen_jobs:
                 continue
 
-            message = f"🚨 *New Job Found!*\n\n🏥 *Title:* {title}\n🔗 *Apply here:* {link}"
+            message = f"🚨 *New Job Found!*\n\n" \
+                      f"🏥 *Title:* {title}\n" \
+                      f"🔗 *Apply here:* {link}"
+
             print(message + "\n")
             send_telegram(message)
 
@@ -150,7 +154,10 @@ def check_scotland(seen_jobs):
             if job_id in seen_jobs:
                 continue
 
-            message = f"🚨 *Scotland Job Found!*\n\n🏥 *Title:* {title}\n🔗 *Apply here:* {link}"
+            message = f"🚨 *Scotland Job Found!*\n\n" \
+                      f"🏥 *Title:* {title}\n" \
+                      f"🔗 *Apply here:* {link}"
+
             print(message + "\n")
             send_telegram(message)
             save_seen(job_id)
