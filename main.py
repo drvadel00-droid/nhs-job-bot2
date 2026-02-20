@@ -3,7 +3,6 @@ from bs4 import BeautifulSoup
 import time
 import re
 import os
-import datetime
 
 # ---------------- CONFIG ---------------- #
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -20,7 +19,7 @@ URLS = [
     # Northern Ireland
     "https://jobs.hscni.net/Search?SearchCatID=0",
 
-    # Scotland NHS jobs (public page)
+    # Scotland NHS jobs (manual check)
     "https://apply.jobs.scot.nhs.uk/Home/Search"
 ]
 
@@ -48,7 +47,7 @@ EXCLUDE_KEYWORDS = [
     "advanced trainee", "higher specialty",
     "nurse", "midwife", "psychologist", "assistant",
     "admin", "radiographer", "physiotherapist", "manager",
-    "director", "healthcare assistant"
+    "director", "healthcare assistant", "lead", "scientist"
 ]
 
 # ---------------- UTILS ---------------- #
@@ -121,8 +120,11 @@ def check_site(url, seen_jobs):
             if job_id in seen_jobs:
                 continue
 
-            # Treat all jobs as recent for NHS Jobs England
-            message = f"🚨 New Job Found!\n\n🏥 {title}\n🔗 Apply: {link}"
+            # Clean Telegram message
+            message = f"🚨 New Job Found!\n\n" \
+                      f"🏥 Title: {title}\n" \
+                      f"🔗 Apply here: {link}"
+
             print(message + "\n")
             send_telegram(message)
 
@@ -154,7 +156,10 @@ def check_scotland(seen_jobs):
             if job_id in seen_jobs:
                 continue
 
-            message = f"🚨 Scotland Job Found!\n\n🏥 {title}\n🔗 Apply: {link}"
+            message = f"🚨 Scotland Job Found!\n\n" \
+                      f"🏥 Title: {title}\n" \
+                      f"🔗 Apply here: {link}"
+
             print(message + "\n")
             send_telegram(message)
             save_seen(job_id)
