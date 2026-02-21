@@ -2,37 +2,47 @@ import requests
 from bs4 import BeautifulSoup
 import time
 import re
+import xml.etree.ElementTree as ET
 
 # ---------------- CONFIG ---------------- #
-BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"  # Your bot token
-CHAT_ID = "-1003888963521"  # Your private channel numeric ID
+BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"
+CHAT_ID = "-1003888963521"
 CHECK_INTERVAL = 120  # seconds
 
 URLS = [
     # HealthJobsUK
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=94511",
-    # NHS Jobs England
-    "https://www.jobs.nhs.uk/candidate/search/results?keyword=doctor&sort=publicationDateDesc",
+
     # Northern Ireland
     "https://jobs.hscni.net/Search?SearchCatID=0",
+
     # Scotland NHS jobs
     "https://apply.jobs.scot.nhs.uk/Home/Search",
+
     # Newcastle Hospitals
     "https://www.newcastle-hospitals.nhs.uk/careers/",
+
     # Leeds Teaching Hospitals
     "https://www.leedsth.nhs.uk/careers/",
+
     # Manchester University NHS FT
     "https://mft.nhs.uk/careers/",
+
     # Barts Health
     "https://www.bartshealth.nhs.uk/jobs",
+
     # Imperial College Healthcare
     "https://www.imperial.nhs.uk/careers",
+
     # Guy’s & St Thomas’
     "https://www.guysandstthomas.nhs.uk/work-us",
+
     # UCLH
     "https://www.uclh.nhs.uk/work-with-us",
+
     # Portsmouth Hospitals
     "https://www.porthosp.nhs.uk/careers.htm",
+
     # Royal United Hospitals Bath
     "https://www.ruh.nhs.uk/careers/"
 ]
@@ -76,17 +86,19 @@ def save_seen(job_id):
     with open("seen_jobs.txt", "a") as f:
         f.write(job_id + "\n")
 
+def escape_telegram(text):
+    # Escape characters Telegram Markdown v2 requires
+    chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    for c in chars:
+        text = text.replace(c, f"\\{c}")
+    return text
+
 def send_telegram(message):
     if not BOT_TOKEN or not CHAT_ID:
         print("Telegram not configured")
         return
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": message,
-        "parse_mode": "HTML",  # switched to HTML mode
-        "disable_web_page_preview": True
-    }
+    payload = {"chat_id": CHAT_ID, "text": escape_telegram(message), "parse_mode": "MarkdownV2"}
     try:
         r = requests.post(url, data=payload, timeout=10)
         print(f"Telegram response: {r.status_code}")
@@ -138,8 +150,7 @@ def check_site(url, seen_jobs):
             if job_id in seen_jobs:
                 continue
 
-            # HTML-safe message
-            message = f"🚨 <b>New NHS Job Found!</b>\n\n🏥 <b>Title:</b> {title}\n🔗 <b>Apply here:</b> {link}"
+            message = f"🚨 *New NHS Job Found!*\n\n🏥 *Title:* {title}\n🔗 *Apply here:* {link}"
             print(message + "\n")
             send_telegram(message)
 
@@ -171,7 +182,7 @@ def check_scotland(seen_jobs):
             if job_id in seen_jobs:
                 continue
 
-            message = f"🚨 <b>Scotland Job Found!</b>\n\n🏥 <b>Title:</b> {title}\n🔗 <b>Apply here:</b> {link}"
+            message = f"🚨 *Scotland Job Found!*\n\n🏥 *Title:* {title}\n🔗 *Apply here:* {link}"
             print(message + "\n")
             send_telegram(message)
             save_seen(job_id)
@@ -179,6 +190,34 @@ def check_scotland(seen_jobs):
 
     except Exception as e:
         print("Error checking Scotland:", e)
+
+# ---------------- NHS JOBS RSS CHECK ---------------- #
+def check_nhs_jobs_rss(seen_jobs):
+    print("Checking NHS Jobs RSS feed...")
+    RSS_URL = "https://www.jobs.nhs.uk/rss/vacancy?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50,50-60&sort=publicationDateDesc&language=en"
+    try:
+        response = requests.get(RSS_URL, timeout=15)
+        root = ET.fromstring(response.content)
+
+        for item in root.findall("./channel/item"):
+            title = item.find("title").text
+            link = item.find("link").text
+
+            if not relevant_job(title):
+                continue
+
+            job_id = extract_job_id(link)
+            if job_id in seen_jobs:
+                continue
+
+            message = f"🚨 *New NHS Job Found!*\n\n🏥 *Title:* {title}\n🔗 *Apply here:* {link}"
+            print(message + "\n")
+            send_telegram(message)
+            save_seen(job_id)
+            seen_jobs.add(job_id)
+
+    except Exception as e:
+        print("Error checking NHS Jobs RSS:", e)
 
 # ---------------- MAIN LOOP ---------------- #
 def main():
@@ -190,6 +229,10 @@ def main():
                 check_scotland(seen_jobs)
             else:
                 check_site(url, seen_jobs)
+
+        # RSS feed for NHS Jobs (general doctors)
+        check_nhs_jobs_rss(seen_jobs)
+
         time.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
