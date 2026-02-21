@@ -73,7 +73,7 @@ EXCLUDE_KEYWORDS = [
     "advanced trainee", "higher specialty",
     "nurse", "midwife", "psychologist", "assistant",
     "admin", "radiographer", "physiotherapist", "manager",
-    "director", "healthcare assistant"
+    "director", "healthcare assistant", "scientist", "lead"
 ]
 
 # ---------------- UTILS ---------------- #
