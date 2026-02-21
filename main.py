@@ -9,18 +9,43 @@ CHAT_ID = "-1003888963521"
 CHECK_INTERVAL = 120  # seconds
 
 URLS = [
+    # HealthJobsUK
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=94511",
+
+    # NHS Jobs England
     "https://www.jobs.nhs.uk/candidate/search/results?keyword=doctor&sort=publicationDateDesc",
+
+    # Northern Ireland
     "https://jobs.hscni.net/Search?SearchCatID=0",
+
+    # Scotland NHS jobs
     "https://apply.jobs.scot.nhs.uk/Home/Search",
+
+    # Newcastle Hospitals
     "https://www.newcastle-hospitals.nhs.uk/careers/",
+
+    # Leeds Teaching Hospitals
     "https://www.leedsth.nhs.uk/careers/",
+
+    # Manchester University NHS FT
     "https://mft.nhs.uk/careers/",
+
+    # Barts Health
     "https://www.bartshealth.nhs.uk/jobs",
+
+    # Imperial College Healthcare
     "https://www.imperial.nhs.uk/careers",
+
+    # Guy’s & St Thomas’
     "https://www.guysandstthomas.nhs.uk/work-us",
+
+    # UCLH
     "https://www.uclh.nhs.uk/work-with-us",
+
+    # Portsmouth Hospitals University NHS Trust
     "https://www.porthosp.nhs.uk/careers.htm",
+
+    # Royal United Hospitals Bath NHS Foundation Trust
     "https://www.ruh.nhs.uk/careers/"
 ]
 
@@ -68,7 +93,9 @@ def send_telegram(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHAT_ID,
-        "text": message
+        "text": message,
+        "parse_mode": "Markdown",
+        "disable_web_page_preview": True
     }
     try:
         r = requests.post(url, data=payload, timeout=10)
@@ -123,9 +150,9 @@ def check_site(url, seen_jobs):
                 continue
 
             message = (
-                f"🚨 New Job Found!\n\n"
-                f"Title: {title}\n"
-                f"Apply here: {link}"
+                f"🚨 *New NHS Job Found!*\n\n"
+                f"🏥 *Title:* {title}\n"
+                f"🔗 *Apply here:* {link}"
             )
 
             print(message + "\n")
