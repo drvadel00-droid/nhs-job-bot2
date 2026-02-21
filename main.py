@@ -4,9 +4,9 @@ import time
 import re
 
 # ---------------- CONFIG ---------------- #
-BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"        # Replace with your bot token
-CHAT_ID = "-1003888963521"            # Your private channel numeric ID
-CHECK_INTERVAL = 120                  # seconds
+BOT_TOKEN = "PUT_YOUR_NEW_TOKEN_HERE"
+CHAT_ID = "-1003888963521"
+CHECK_INTERVAL = 120  # seconds
 
 URLS = [
     # HealthJobsUK
@@ -19,34 +19,34 @@ URLS = [
     "https://jobs.hscni.net/Search?SearchCatID=0",
 
     # Scotland NHS jobs
-    "https://apply.jobs.scot.nhs.uk/Home/Search"
-    
+    "https://apply.jobs.scot.nhs.uk/Home/Search",
+
     # Newcastle Hospitals
-"https://www.newcastle-hospitals.nhs.uk/careers/",
+    "https://www.newcastle-hospitals.nhs.uk/careers/",
 
-# Leeds Teaching Hospitals
-"https://www.leedsth.nhs.uk/careers/",
+    # Leeds Teaching Hospitals
+    "https://www.leedsth.nhs.uk/careers/",
 
-# Manchester University NHS FT
-"https://mft.nhs.uk/careers/",
+    # Manchester University NHS FT
+    "https://mft.nhs.uk/careers/",
 
-# Barts Health
-"https://www.bartshealth.nhs.uk/jobs",
+    # Barts Health
+    "https://www.bartshealth.nhs.uk/jobs",
 
-# Imperial College Healthcare
-"https://www.imperial.nhs.uk/careers",
+    # Imperial College Healthcare
+    "https://www.imperial.nhs.uk/careers",
 
-# Guy’s & St Thomas’
-"https://www.guysandstthomas.nhs.uk/work-us",
+    # Guy’s & St Thomas’
+    "https://www.guysandstthomas.nhs.uk/work-us",
 
-# UCLH
-"https://www.uclh.nhs.uk/work-with-us",
+    # UCLH
+    "https://www.uclh.nhs.uk/work-with-us",
 
-# Portsmouth Hospitals University NHS Trust
-"https://www.porthosp.nhs.uk/careers.htm",
+    # Portsmouth Hospitals University NHS Trust
+    "https://www.porthosp.nhs.uk/careers.htm",
 
-# Royal United Hospitals Bath NHS Foundation Trust
-"https://www.ruh.nhs.uk/careers/"
+    # Royal United Hospitals Bath NHS Foundation Trust
+    "https://www.ruh.nhs.uk/careers/"
 ]
 
 # ---------------- FILTER LOGIC ---------------- #
@@ -77,6 +77,7 @@ EXCLUDE_KEYWORDS = [
 ]
 
 # ---------------- UTILS ---------------- #
+
 def load_seen():
     try:
         with open("seen_jobs.txt", "r") as f:
@@ -88,15 +89,20 @@ def save_seen(job_id):
     with open("seen_jobs.txt", "a") as f:
         f.write(job_id + "\n")
 
+def escape_markdown(text):
+    escape_chars = r"_*[]()~`>#+-=|{}.!"
+    return ''.join(f"\\{c}" if c in escape_chars else c for c in text)
+
 def send_telegram(message):
-    if not BOT_TOKEN or not CHAT_ID:
-        print("Telegram not configured")
-        return
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": message,
+        "parse_mode": "MarkdownV2"
+    }
     try:
         r = requests.post(url, data=payload, timeout=10)
-        print(f"Telegram response: {r.status_code}")
+        print("Telegram response:", r.status_code, r.text)
     except Exception as e:
         print("Telegram send error:", e)
 
@@ -120,6 +126,7 @@ def normalize_link(link, base):
     return link
 
 # ---------------- SITE CHECK ---------------- #
+
 def check_site(url, seen_jobs):
     print(f"Checking {url}")
     try:
@@ -145,57 +152,30 @@ def check_site(url, seen_jobs):
             if job_id in seen_jobs:
                 continue
 
-            message = f"🚨 *New Job Found!*\n\n🏥 *Title:* {title}\n🔗 *Apply here:* {link}"
-            print(message + "\n")
-            send_telegram(message)
+            safe_title = escape_markdown(title)
+            safe_link = escape_markdown(link)
 
+            message = (
+                f"🚨 *New Job Found!*\n\n"
+                f"🏥 *Title:* {safe_title}\n"
+                f"🔗 *Apply here:* {safe_link}"
+            )
+
+            send_telegram(message)
             save_seen(job_id)
             seen_jobs.add(job_id)
 
     except Exception as e:
         print(f"Error checking {url}: {e}")
 
-# ---------------- SCOTLAND CHECK ---------------- #
-def check_scotland(seen_jobs):
-    print("Checking Scotland jobs...")
-    url = "https://apply.jobs.scot.nhs.uk/Home/Search"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        response = requests.get(url, headers=headers, timeout=15)
-        soup = BeautifulSoup(response.text, "html.parser")
-        a_tags = soup.find_all("a", href=True)
-
-        for a in a_tags:
-            href = a['href']
-            if "JobDetail?JobId=" not in href:
-                continue
-            link = normalize_link(href, "https://apply.jobs.scot.nhs.uk")
-            title = a.get_text(strip=True)
-            if not relevant_job(title):
-                continue
-            job_id = extract_job_id(link)
-            if job_id in seen_jobs:
-                continue
-
-            message = f"🚨 *Scotland Job Found!*\n\n🏥 *Title:* {title}\n🔗 *Apply here:* {link}"
-            print(message + "\n")
-            send_telegram(message)
-            save_seen(job_id)
-            seen_jobs.add(job_id)
-
-    except Exception as e:
-        print("Error checking Scotland:", e)
-
 # ---------------- MAIN LOOP ---------------- #
+
 def main():
     print("🚀 NHS Job Bot started...")
     seen_jobs = load_seen()
     while True:
         for url in URLS:
-            if "apply.jobs.scot.nhs.uk" in url:
-                check_scotland(seen_jobs)
-            else:
-                check_site(url, seen_jobs)
+            check_site(url, seen_jobs)
         time.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
