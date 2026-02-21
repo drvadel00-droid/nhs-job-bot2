@@ -2,313 +2,189 @@ import requests
 from bs4 import BeautifulSoup
 import time
 import re
-from urllib.parse import urljoin
 
 # ---------------- CONFIG ---------------- #
 BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"
 CHAT_ID = "-1003888963521"
-CHECK_INTERVAL = 180  # 3 minutes
 
-# ---------------- FILTERS ---------------- #
-MEDICAL_SPECIALTIES = [
-    "medicine", "internal medicine", "general medicine", "paediatric", "pediatric",
-    "surgery", "general surgery", "emergency medicine", "oncology", "cardiology",
-    "respiratory", "gastroenterology", "neurology", "obstetrics", "gynaecology",
-    "haematology", "anaesthetics", "intensive care", "critical care", "acute medicine"
-]
-
-GRADE_KEYWORDS = [
-    "foundation", "fy1", "fy2", "f1", "f2", "ct1", "ct2", "ct3", "core trainee",
-    "st1", "st2", "st3", "registrar", "specialty registrar", "sas doctor",
-    "specialty doctor", "trust doctor", "clinical fellow", "junior fellow",
-    "research fellow", "teaching fellow", "locum doctor", "senior clinical fellow"
-]
-
-EXCLUDE_KEYWORDS = [
-    "consultant", "st4", "st5", "st6", "st7", "st8", "nurse", "midwife",
-    "psychologist", "admin", "manager", "director", "healthcare assistant"
-]
-
-# ---------------- UTILS ---------------- #
-def load_seen():
-    try:
-        with open("seen_jobs.txt", "r") as f:
-            return set(f.read().splitlines())
-    except FileNotFoundError:
-        return set()
-
-def save_seen(job_id):
-    with open("seen_jobs.txt", "a") as f:
-        f.write(job_id + "\n")
-
-def escape_telegram(text):
-    escape_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-    for ch in escape_chars:
-        text = text.replace(ch, f"\\{ch}")
-    return text
-
-def send_telegram(message):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": CHAT_ID, 
-        "text": escape_telegram(message), 
-        "parse_mode": "MarkdownV2"
-    }
-    try:
-        requests.post(url, data=payload, timeout=10)
-    except:
-        pass
-
-def extract_job_id(link):
-    match = re.search(r'/(\d+)$|JobId=(\d+)|vacancy/(\d+)|job/(\d+)', link)
-    if match:
-        return next(g for g in match.groups() if g is not None)
-    return link
-
-def relevant_job(title):
-    title_lower = title.lower()
-    if any(ex in title_lower for ex in EXCLUDE_KEYWORDS):
-        return False
-    has_grade = any(gr in title_lower for gr in GRADE_KEYWORDS)
-    if not has_grade:
-        return False
-    if "doctor" in title_lower or "clinical" in title_lower:
-        return True
-    return any(sp in title_lower for sp in MEDICAL_SPECIALTIES)
-
-# ---------------- WORKING JOB CHECKERS ---------------- #
-
-def check_northern_ireland(seen_jobs):
-    """Northern Ireland - Already Working (shows newest first by default)"""
-    print("\n🔍 Northern Ireland HSC...")
-    url = "https://jobs.hscni.net/Search?Keywords=doctor&CategoryID=0"
+# ---------------- DEBUG FUNCTION ---------------- #
+def debug_nhs_england():
+    """Debug NHS England to see what's really on the page"""
+    print("\n🔍 DEBUG - NHS England Page Structure")
+    print("="*60)
+    
+    url = "https://www.jobs.nhs.uk/candidate/jobs/search?keyword=doctor&sort=posteddate"
+    headers = {"User-Agent": "Mozilla/5.0"}
     
     try:
-        response = requests.get(url, timeout=15)
+        response = requests.get(url, headers=headers, timeout=15)
+        print(f"📊 Status Code: {response.status_code}")
+        print(f"📦 Response Size: {len(response.text)} characters")
+        
         soup = BeautifulSoup(response.text, "html.parser")
         
-        found = 0
-        for a in soup.find_all("a", href=True):
-            href = a['href']
-            if "JobDetail" not in href:
-                continue
-            
-            title = a.get_text(strip=True)
-            if not title or len(title) < 10:
-                continue
-            
-            if not relevant_job(title):
-                continue
-            
-            full_url = urljoin("https://jobs.hscni.net", href)
-            job_id = extract_job_id(full_url)
-            
-            if job_id in seen_jobs:
-                continue
-            
-            found += 1
-            message = f"🚨 *NI Health Job*\n\n📋 {title}\n🔗 {full_url}"
-            send_telegram(message)
-            save_seen(job_id)
-            seen_jobs.add(job_id)
-            print(f"  ✅ {title[:50]}...")
+        # Print page title
+        title = soup.find("title")
+        print(f"📌 Page Title: {title.text if title else 'No title'}")
         
-        print(f"  Found {found} new jobs")
-        return found
+        # Look for any job-related content
+        print("\n🔎 Searching for job-related elements...")
+        
+        # Check for common job containers
+        containers = soup.find_all(["div", "article", "section"], 
+                                  class_=re.compile(r"job|vacancy|result|card|listing", re.I))
+        print(f"📦 Found {len(containers)} potential job containers")
+        
+        # Check for links with job in href
+        job_links = soup.find_all("a", href=re.compile(r"job|vacancy|position", re.I))
+        print(f"🔗 Found {len(job_links)} links with 'job' in href")
+        
+        # Check for text containing medical keywords
+        page_text = soup.get_text()
+        medical_terms = ["doctor", "clinical", "medical", "nurse", "consultant"]
+        for term in medical_terms:
+            count = page_text.lower().count(term)
+            print(f"  '{term}' appears {count} times")
+        
+        # Print first 500 chars of HTML to see structure
+        print("\n📄 First 1000 characters of HTML:")
+        print("-"*40)
+        print(response.text[:1000])
+        print("-"*40)
+        
+        # Look specifically for the job listing area
+        print("\n🎯 Looking for main content area...")
+        
+        # Try common selectors
+        selectors = [
+            "main", "article", ".search-results", "#results",
+            ".job-results", ".vacancy-list", ".job-list"
+        ]
+        
+        for selector in selectors:
+            elements = soup.select(selector)
+            if elements:
+                print(f"  Found {len(elements)} elements with selector '{selector}'")
+        
+        # Try to find any links with numbers in them (often job IDs)
+        numbered_links = soup.find_all("a", href=re.compile(r"/\d+"))
+        print(f"\n🔢 Found {len(numbered_links)} links with numbers in href")
+        
+        for i, link in enumerate(numbered_links[:5]):
+            print(f"  {i+1}. {link.get('href')} - Text: {link.get_text(strip=True)[:50]}")
+        
     except Exception as e:
-        print(f"  Error: {e}")
-        return 0
+        print(f"❌ Error: {e}")
 
-def check_nhs_england(seen_jobs):
-    """NHS England - Sorted by Posted Date (Newest First)"""
-    print("\n🔍 NHS England (Newest First)...")
+def debug_healthjobsuk():
+    """Debug HealthJobsUK"""
+    print("\n🔍 DEBUG - HealthJobsUK Page Structure")
+    print("="*60)
     
-    # CORRECT: sort by posted date (newest first)
-    urls = [
-        "https://www.jobs.nhs.uk/candidate/jobs/search?keyword=doctor&sort=posteddate",
-        "https://www.jobs.nhs.uk/candidate/jobs/search?keyword=foundation&sort=posteddate",
-        "https://www.jobs.nhs.uk/candidate/jobs/search?keyword=junior+doctor&sort=posteddate",
-        "https://www.jobs.nhs.uk/candidate/jobs/search?keyword=clinical+fellow&sort=posteddate",
-    ]
-    
-    headers = {"User-Agent": "Mozilla/5.0"}
-    total_found = 0
-    
-    for url in urls:
-        try:
-            print(f"  📍 Searching: {url.split('?')[1]}")
-            response = requests.get(url, headers=headers, timeout=15)
-            soup = BeautifulSoup(response.text, "html.parser")
-            
-            # Find job links
-            job_links = soup.find_all("a", href=re.compile(r"/job/\d+"))
-            
-            if not job_links:
-                print(f"  ⚠️ No jobs found for this search")
-                continue
-            
-            for a in job_links:
-                title = a.get_text(strip=True)
-                href = a['href']
-                
-                if not title or len(title) < 10:
-                    continue
-                
-                if not relevant_job(title):
-                    continue
-                
-                full_url = urljoin("https://www.jobs.nhs.uk", href)
-                job_id = extract_job_id(full_url)
-                
-                if job_id in seen_jobs:
-                    continue
-                
-                total_found += 1
-                message = f"🚨 *NHS England Job*\n\n📋 {title}\n🔗 {full_url}"
-                send_telegram(message)
-                save_seen(job_id)
-                seen_jobs.add(job_id)
-                print(f"  ✅ {title[:50]}...")
-            
-            time.sleep(1)
-            
-        except Exception as e:
-            print(f"  Error: {e}")
-    
-    print(f"  Found {total_found} new jobs")
-    return total_found
-
-def check_healthjobsuk(seen_jobs):
-    """HealthJobsUK - Sorted by Date (Newest First)"""
-    print("\n🔍 HealthJobsUK (Newest First)...")
-    
-    # CORRECT: sort by DateDesc for newest first
     url = "https://www.healthjobsuk.com/jobs/doctor?sort=DateDesc"
     
     try:
         response = requests.get(url, timeout=15)
+        print(f"📊 Status Code: {response.status_code}")
+        print(f"📦 Response Size: {len(response.text)} characters")
+        
         soup = BeautifulSoup(response.text, "html.parser")
         
-        found = 0
-        # Look for job cards/links
-        job_elements = soup.find_all("div", class_=re.compile(r"job|vacancy", re.I))
+        title = soup.find("title")
+        print(f"📌 Page Title: {title.text if title else 'No title'}")
         
-        if not job_elements:
-            # Fallback to links
-            job_elements = soup.find_all("a", href=re.compile(r"/job/|/vacancy/", re.I))
+        # Look for job cards
+        job_cards = soup.find_all(["div", "li"], class_=re.compile(r"job|vacancy|result", re.I))
+        print(f"\n📦 Found {len(job_cards)} potential job cards")
         
-        for element in job_elements:
-            if element.name == 'a':
-                title = element.get_text(strip=True)
-                href = element['href']
-            else:
-                # Try to find link inside div
-                link = element.find("a", href=True)
-                if not link:
-                    continue
-                title = link.get_text(strip=True)
-                href = link['href']
-            
-            if not title or len(title) < 10:
-                continue
-            
-            if not relevant_job(title):
-                continue
-            
-            full_url = urljoin("https://www.healthjobsuk.com", href)
-            job_id = extract_job_id(full_url)
-            
-            if job_id in seen_jobs:
-                continue
-            
-            found += 1
-            message = f"🚨 *HealthJobsUK*\n\n📋 {title}\n🔗 {full_url}"
-            send_telegram(message)
-            save_seen(job_id)
-            seen_jobs.add(job_id)
-            print(f"  ✅ {title[:50]}...")
+        # Look for job links
+        job_links = soup.find_all("a", href=re.compile(r"/job/|/vacancy/", re.I))
+        print(f"🔗 Found {len(job_links)} job links")
         
-        print(f"  Found {found} new jobs")
-        return found
+        # Print first few job links if any
+        for i, link in enumerate(job_links[:5]):
+            print(f"  {i+1}. {link.get_text(strip=True)[:50]} -> {link.get('href')}")
+        
     except Exception as e:
-        print(f"  Error: {e}")
-        return 0
+        print(f"❌ Error: {e}")
 
-def check_scotland(seen_jobs):
-    """NHS Scotland - Newest appear first by default"""
-    print("\n🔍 NHS Scotland...")
+def debug_scotland():
+    """Debug NHS Scotland"""
+    print("\n🔍 DEBUG - NHS Scotland Page Structure")
+    print("="*60)
     
     url = "https://apply.jobs.scot.nhs.uk/Home/Search"
     
     try:
         response = requests.get(url, timeout=15)
+        print(f"📊 Status Code: {response.status_code}")
+        print(f"📦 Response Size: {len(response.text)} characters")
+        
         soup = BeautifulSoup(response.text, "html.parser")
         
-        found = 0
-        for a in soup.find_all("a", href=True):
-            href = a['href']
-            if "JobDetail" not in href:
-                continue
-            
-            title = a.get_text(strip=True)
-            if not title or len(title) < 10:
-                continue
-            
-            if not relevant_job(title):
-                continue
-            
-            full_url = urljoin("https://apply.jobs.scot.nhs.uk", href)
-            job_id = extract_job_id(full_url)
-            
-            if job_id in seen_jobs:
-                continue
-            
-            found += 1
-            message = f"🚨 *NHS Scotland Job*\n\n📋 {title}\n🔗 {full_url}"
-            send_telegram(message)
-            save_seen(job_id)
-            seen_jobs.add(job_id)
-            print(f"  ✅ {title[:50]}...")
+        title = soup.find("title")
+        print(f"📌 Page Title: {title.text if title else 'No title'}")
         
-        print(f"  Found {found} new jobs")
-        return found
+        # Look for job links
+        job_links = soup.find_all("a", href=re.compile(r"JobDetail|Vacancy", re.I))
+        print(f"🔗 Found {len(job_links)} job links")
+        
+        for i, link in enumerate(job_links[:5]):
+            print(f"  {i+1}. {link.get_text(strip=True)[:50]} -> {link.get('href')}")
+        
     except Exception as e:
-        print(f"  Error: {e}")
-        return 0
+        print(f"❌ Error: {e}")
 
-# ---------------- MAIN LOOP ---------------- #
+def debug_hscni():
+    """Debug Northern Ireland"""
+    print("\n🔍 DEBUG - Northern Ireland Page Structure")
+    print("="*60)
+    
+    url = "https://jobs.hscni.net/Search?Keywords=doctor&CategoryID=0"
+    
+    try:
+        response = requests.get(url, timeout=15)
+        print(f"📊 Status Code: {response.status_code}")
+        print(f"📦 Response Size: {len(response.text)} characters")
+        
+        soup = BeautifulSoup(response.text, "html.parser")
+        
+        title = soup.find("title")
+        print(f"📌 Page Title: {title.text if title else 'No title'}")
+        
+        # Look for job links
+        job_links = soup.find_all("a", href=re.compile(r"JobDetail|Vacancy", re.I))
+        print(f"🔗 Found {len(job_links)} job links")
+        
+        for i, link in enumerate(job_links[:5]):
+            print(f"  {i+1}. {link.get_text(strip=True)[:50]} -> {link.get('href')}")
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+
+# ---------------- MAIN DEBUG ---------------- #
 def main():
-    print("🚀 NHS Job Bot - NEWEST JOBS FIRST")
-    print("="*60)
-    print("✅ Northern Ireland: Newest first by default")
-    print("✅ NHS England: Sorted by posted date")
-    print("✅ HealthJobsUK: Sorted by date descending")
-    print("✅ NHS Scotland: Newest first by default")
+    print("🚀 NHS JOB BOT - DEEP DEBUG MODE")
+    print("This will show us exactly what each site returns")
     print("="*60)
     
-    seen_jobs = load_seen()
-    print(f"📚 Loaded {len(seen_jobs)} previously seen jobs")
+    debug_hscni()          # Test Northern Ireland (was working)
+    print("\n" + "="*60)
+    time.sleep(2)
     
-    while True:
-        print(f"\n{'='*60}")
-        print(f"🕐 Check at {time.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"{'='*60}")
-        
-        total = 0
-        total += check_northern_ireland(seen_jobs)
-        time.sleep(2)
-        total += check_nhs_england(seen_jobs)
-        time.sleep(2)
-        total += check_healthjobsuk(seen_jobs)
-        time.sleep(2)
-        total += check_scotland(seen_jobs)
-        
-        print(f"\n{'='*60}")
-        print(f"✅ Total new jobs: {total}")
-        print(f"💤 Sleeping {CHECK_INTERVAL} seconds...")
-        print(f"{'='*60}")
-        
-        time.sleep(CHECK_INTERVAL)
+    debug_nhs_england()    # Test NHS England (showing 0)
+    print("\n" + "="*60)
+    time.sleep(2)
+    
+    debug_healthjobsuk()   # Test HealthJobsUK
+    print("\n" + "="*60)
+    time.sleep(2)
+    
+    debug_scotland()       # Test Scotland
+    
+    print("\n" + "="*60)
+    print("✅ DEBUG COMPLETE")
+    print("Please share this output so I can see the actual page structures")
 
 if __name__ == "__main__":
     main()
