@@ -5,8 +5,8 @@ import re
 
 # ---------------- CONFIG ---------------- #
 BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"  # Your bot token
-CHAT_ID = "-1003888963521"                                      # Your channel ID
-CHECK_INTERVAL = 120                                            # seconds
+CHAT_ID = "-1003888963521"  # Your private channel numeric ID
+CHECK_INTERVAL = 120  # seconds
 
 URLS = [
     # HealthJobsUK
@@ -76,13 +76,6 @@ def save_seen(job_id):
     with open("seen_jobs.txt", "a") as f:
         f.write(job_id + "\n")
 
-def escape_markdown(text):
-    """Escape Telegram MarkdownV2 special characters"""
-    escape_chars = "_*[]()~`>#+-=|{}.!\\"
-    for ch in escape_chars:
-        text = text.replace(ch, f"\\{ch}")
-    return text
-
 def send_telegram(message):
     if not BOT_TOKEN or not CHAT_ID:
         print("Telegram not configured")
@@ -90,8 +83,8 @@ def send_telegram(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHAT_ID,
-        "text": escape_markdown(message),
-        "parse_mode": "MarkdownV2",
+        "text": message,
+        "parse_mode": "HTML",  # switched to HTML mode
         "disable_web_page_preview": True
     }
     try:
@@ -127,6 +120,7 @@ def check_site(url, seen_jobs):
         response = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(response.text, "html.parser")
         job_links = soup.find_all("a", href=True)
+
         base_url = re.match(r"(https?://[^/]+)", url).group(1)
 
         for a in job_links:
@@ -135,6 +129,8 @@ def check_site(url, seen_jobs):
 
             if not title or len(title) < 5:
                 continue
+            if not re.search(r"\d+", link):
+                continue
             if not relevant_job(title):
                 continue
 
@@ -142,9 +138,11 @@ def check_site(url, seen_jobs):
             if job_id in seen_jobs:
                 continue
 
-            message = f"🚨 *New NHS Job Found!*\n\n🏥 *Title:* {title}\n🔗 *Apply here:* {link}"
+            # HTML-safe message
+            message = f"🚨 <b>New NHS Job Found!</b>\n\n🏥 <b>Title:</b> {title}\n🔗 <b>Apply here:</b> {link}"
             print(message + "\n")
             send_telegram(message)
+
             save_seen(job_id)
             seen_jobs.add(job_id)
 
@@ -173,7 +171,7 @@ def check_scotland(seen_jobs):
             if job_id in seen_jobs:
                 continue
 
-            message = f"🚨 *Scotland Job Found!*\n\n🏥 *Title:* {title}\n🔗 *Apply here:* {link}"
+            message = f"🚨 <b>Scotland Job Found!</b>\n\n🏥 <b>Title:</b> {title}\n🔗 <b>Apply here:</b> {link}"
             print(message + "\n")
             send_telegram(message)
             save_seen(job_id)
