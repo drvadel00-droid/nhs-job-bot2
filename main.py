@@ -20,6 +20,33 @@ URLS = [
 
     # Scotland NHS jobs
     "https://apply.jobs.scot.nhs.uk/Home/Search"
+    
+    # Newcastle Hospitals
+"https://www.newcastle-hospitals.nhs.uk/careers/",
+
+# Leeds Teaching Hospitals
+"https://www.leedsth.nhs.uk/careers/",
+
+# Manchester University NHS FT
+"https://mft.nhs.uk/careers/",
+
+# Barts Health
+"https://www.bartshealth.nhs.uk/jobs",
+
+# Imperial College Healthcare
+"https://www.imperial.nhs.uk/careers",
+
+# Guy’s & St Thomas’
+"https://www.guysandstthomas.nhs.uk/work-us",
+
+# UCLH
+"https://www.uclh.nhs.uk/work-with-us",
+
+# Portsmouth Hospitals University NHS Trust
+"https://www.porthosp.nhs.uk/careers.htm",
+
+# Royal United Hospitals Bath NHS Foundation Trust
+"https://www.ruh.nhs.uk/careers/"
 ]
 
 # ---------------- FILTER LOGIC ---------------- #
