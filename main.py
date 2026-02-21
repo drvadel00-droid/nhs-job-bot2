@@ -4,7 +4,7 @@ import time
 import re
 
 # ---------------- CONFIG ---------------- #
-BOT_TOKEN = "PUT_YOUR_NEW_TOKEN_HERE"
+BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"
 CHAT_ID = "-1003888963521"
 CHECK_INTERVAL = 120  # seconds
 
