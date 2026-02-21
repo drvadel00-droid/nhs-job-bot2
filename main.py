@@ -2,16 +2,18 @@ import requests
 from bs4 import BeautifulSoup
 import time
 import re
-import xml.etree.ElementTree as ET
 
 # ---------------- CONFIG ---------------- #
-BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"
-CHAT_ID = "-1003888963521"
+BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"  # Your bot token
+CHAT_ID = "-1003888963521"  # Your private channel numeric ID
 CHECK_INTERVAL = 120  # seconds
 
 URLS = [
     # HealthJobsUK
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=94511",
+
+    # NHS Jobs England
+    "https://www.jobs.nhs.uk/candidate/search/results?keyword=doctor&sort=publicationDateDesc",
 
     # Northern Ireland
     "https://jobs.hscni.net/Search?SearchCatID=0",
@@ -40,10 +42,10 @@ URLS = [
     # UCLH
     "https://www.uclh.nhs.uk/work-with-us",
 
-    # Portsmouth Hospitals
+    # Portsmouth Hospitals University NHS Trust
     "https://www.porthosp.nhs.uk/careers.htm",
 
-    # Royal United Hospitals Bath
+    # Royal United Hospitals Bath NHS Foundation Trust
     "https://www.ruh.nhs.uk/careers/"
 ]
 
@@ -87,10 +89,10 @@ def save_seen(job_id):
         f.write(job_id + "\n")
 
 def escape_telegram(text):
-    # Escape characters Telegram Markdown v2 requires
-    chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-    for c in chars:
-        text = text.replace(c, f"\\{c}")
+    # Escape characters that Telegram Markdown needs
+    escape_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    for ch in escape_chars:
+        text = text.replace(ch, f"\\{ch}")
     return text
 
 def send_telegram(message):
@@ -191,34 +193,6 @@ def check_scotland(seen_jobs):
     except Exception as e:
         print("Error checking Scotland:", e)
 
-# ---------------- NHS JOBS RSS CHECK ---------------- #
-def check_nhs_jobs_rss(seen_jobs):
-    print("Checking NHS Jobs RSS feed...")
-    RSS_URL = "https://www.jobs.nhs.uk/rss/vacancy?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50,50-60&sort=publicationDateDesc&language=en"
-    try:
-        response = requests.get(RSS_URL, timeout=15)
-        root = ET.fromstring(response.content)
-
-        for item in root.findall("./channel/item"):
-            title = item.find("title").text
-            link = item.find("link").text
-
-            if not relevant_job(title):
-                continue
-
-            job_id = extract_job_id(link)
-            if job_id in seen_jobs:
-                continue
-
-            message = f"🚨 *New NHS Job Found!*\n\n🏥 *Title:* {title}\n🔗 *Apply here:* {link}"
-            print(message + "\n")
-            send_telegram(message)
-            save_seen(job_id)
-            seen_jobs.add(job_id)
-
-    except Exception as e:
-        print("Error checking NHS Jobs RSS:", e)
-
 # ---------------- MAIN LOOP ---------------- #
 def main():
     print("🚀 NHS Job Bot started...")
@@ -229,10 +203,6 @@ def main():
                 check_scotland(seen_jobs)
             else:
                 check_site(url, seen_jobs)
-
-        # RSS feed for NHS Jobs (general doctors)
-        check_nhs_jobs_rss(seen_jobs)
-
         time.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
