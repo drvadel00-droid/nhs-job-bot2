@@ -53,22 +53,24 @@ EXCLUDE_KEYWORDS = [
     "director", "assistant"
 ]
 
-# ---------------- DRIVER SETUP ---------------- #
 
 # ---------------- DRIVER SETUP ---------------- #
 def get_driver():
     chrome_options = Options()
-    chrome_options.add_argument("--headless=new")  # Use new headless mode
+    chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--window-size=1920,1080")
-    # Adds a real user agent to prevent being blocked by NHS Scotland's firewall
+    # Masking as a real browser
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
 
-    # Simply initialize without specifying a Service path
-    # Selenium 4.10+ will automatically find/download the correct driver
-    return webdriver.Chrome(options=chrome_options)
-
+    try:
+        return webdriver.Chrome(options=chrome_options)
+    except Exception as e:
+        print(f"❌ Selenium could not start: {e}")
+        print("💡 Tip: Ensure Google Chrome is installed in your container environment.")
+        return None
 # ---------------- UTILS ---------------- #
 
 def load_seen():
@@ -197,23 +199,29 @@ def check_scotland(driver, seen_jobs):
 
 def main():
     print("🚀 NHS Job Bot Started...")
-
     seen_jobs = load_seen()
-    driver = get_driver()
 
     try:
         while True:
+            # 1. Check Standard Sites (No Selenium needed)
             for url in URLS:
                 check_site(url, seen_jobs)
 
-            check_scotland(driver, seen_jobs)
+            # 2. Check Scotland (Requires Selenium)
+            driver = get_driver()
+            if driver:
+                try:
+                    check_scotland(driver, seen_jobs)
+                finally:
+                    driver.quit() # Close browser after check to save memory
+            else:
+                print("⚠️ Skipping Scotland check (Browser not available).")
 
             print(f"Waiting {CHECK_INTERVAL} seconds...\n")
             time.sleep(CHECK_INTERVAL)
 
     except KeyboardInterrupt:
         print("Stopping bot...")
-
     finally:
         driver.quit()
 
