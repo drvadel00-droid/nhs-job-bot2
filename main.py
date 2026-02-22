@@ -13,8 +13,8 @@ from selenium.webdriver.support import expected_conditions as EC
 
 # ================= CONFIG ================= #
 
-BOT_TOKEN = os.getenv("8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ")
-CHAT_ID = os.getenv("1003888963521")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
 CHECK_INTERVAL = 300  # 5 minutes
 
