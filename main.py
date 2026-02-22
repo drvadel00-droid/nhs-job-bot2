@@ -1,12 +1,11 @@
 import requests
 import time
-import re
 import os
+from urllib.parse import urljoin
 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -14,40 +13,20 @@ from selenium.webdriver.support import expected_conditions as EC
 
 # ================= CONFIG ================= #
 
-BOT_TOKEN = "1234567890:AAAFakeExampleBotToken123456789"
-CHAT_ID = "-1001234567890"
+BOT_TOKEN = os.getenv("8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ")
+CHAT_ID = os.getenv("1003888963521")
 
 CHECK_INTERVAL = 300  # 5 minutes
 
-URLS = [
-    "https://www.healthjobsuk.com/job_list",
-    "https://www.jobs.nhs.uk/candidate/search/results?keyword=doctor&sort=publicationDateDesc",
-    "https://jobs.hscni.net/Search?SearchCatID=0",
-    "https://apply.jobs.scot.nhs.uk/Home/Search"
-]
+URLS = {
+    "nhs_jobs": "https://www.jobs.nhs.uk/candidate/search/results?keyword=doctor&sort=publicationDateDesc",
+    "healthjobsuk": "https://www.healthjobsuk.com/job_list",
+    "hscni": "https://jobs.hscni.net/Search?SearchCatID=0",
+    "nhs_scotland": "https://apply.jobs.scot.nhs.uk/Home/Search"
+}
 
 
 # ================= FILTER LOGIC ================= #
-
-MEDICAL_SPECIALTIES = [
-    "medicine", "internal medicine", "general medicine",
-    "paediatric", "pediatric", "surgery", "trauma",
-    "orthopaedic", "orthopedic", "emergency",
-    "oncology", "cardiology", "respiratory",
-    "gastroenterology", "neurology",
-    "obstetrics", "gynaecology", "haematology"
-]
-
-GRADE_KEYWORDS = [
-    "foundation", "fy1", "fy2",
-    "ct1", "ct2", "ct3",
-    "st1", "st2", "st3",
-    "registrar",
-    "sas doctor", "specialty doctor",
-    "trust doctor",
-    "clinical fellow", "junior fellow",
-    "locum doctor"
-]
 
 EXCLUDE_KEYWORDS = [
     "consultant", "st4", "st5", "st6", "st7",
@@ -56,6 +35,29 @@ EXCLUDE_KEYWORDS = [
     "physiotherapist", "manager",
     "director", "assistant"
 ]
+
+DOCTOR_TERMS = [
+    "doctor",
+    "clinical fellow",
+    "junior clinical fellow",
+    "senior clinical fellow",
+    "registrar",
+    "trust doctor",
+    "specialty doctor",
+    "core trainee",
+    "ct1", "ct2", "ct3",
+    "st1", "st2", "st3",
+    "fy1", "fy2"
+]
+
+
+def relevant_job(title):
+    t = title.lower()
+
+    if any(ex in t for ex in EXCLUDE_KEYWORDS):
+        return False
+
+    return any(term in t for term in DOCTOR_TERMS)
 
 
 # ================= DRIVER SETUP ================= #
@@ -69,7 +71,7 @@ def get_driver():
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--window-size=1920,1080")
 
-    service = Service(ChromeDriverManager().install())
+    service = Service()
     return webdriver.Chrome(service=service, options=chrome_options)
 
 
@@ -90,58 +92,35 @@ def save_seen(job_id):
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": message}
+
     try:
         requests.post(url, data=payload, timeout=10)
     except Exception as e:
-        print("Telegram Error:", e)
+        print("Telegram error:", e)
 
 
 def extract_job_id(link):
-    match = re.search(r"\d{5,}", link)
-    return match.group() if match else link
+    return link.split("?")[0]
 
 
-def relevant_job(title):
-    t = title.lower()
+# ================= SCRAPERS ================= #
 
-    if any(ex in t for ex in EXCLUDE_KEYWORDS):
-        return False
+def scrape_nhs_jobs(driver, seen_jobs):
+    print("🔎 NHS Jobs...")
 
-    if not any(sp in t for sp in MEDICAL_SPECIALTIES):
-        return False
-
-    if not any(gr in t for gr in GRADE_KEYWORDS):
-        return False
-
-    return True
-
-
-# ================= SCRAPER ================= #
-
-def scrape_site(driver, url, seen_jobs):
-    print(f"\n🔎 Checking: {url}")
-
-    driver.get(url)
+    driver.get(URLS["nhs_jobs"])
 
     WebDriverWait(driver, 20).until(
-        EC.presence_of_element_located((By.TAG_NAME, "body"))
+        EC.presence_of_element_located((By.CSS_SELECTOR, "a[data-test='search-result-job-title']"))
     )
 
-    time.sleep(4)
+    jobs = driver.find_elements(By.CSS_SELECTOR, "a[data-test='search-result-job-title']")
 
-    links = driver.find_elements(By.TAG_NAME, "a")
+    for job in jobs:
+        title = job.text.strip()
+        href = job.get_attribute("href")
 
-    for link in links:
-        title = link.text.strip()
-        href = link.get_attribute("href")
-
-        if not href or not title:
-            continue
-
-        if len(title) < 6:
-            continue
-
-        if not re.search(r"\d{5,}", href):
+        if not title or not href:
             continue
 
         if not relevant_job(title):
@@ -152,15 +131,113 @@ def scrape_site(driver, url, seen_jobs):
         if job_id in seen_jobs:
             continue
 
-        message = (
-            "🚨 Relevant NHS Doctor Job Found!\n\n"
-            f"🏥 {title}\n"
-            f"🔗 {href}"
-        )
+        message = f"🚨 NHS England Job\n\n🏥 {title}\n🔗 {href}"
 
         print(message)
         send_telegram(message)
+        save_seen(job_id)
+        seen_jobs.add(job_id)
 
+
+def scrape_healthjobsuk(driver, seen_jobs):
+    print("🔎 HealthJobsUK...")
+
+    driver.get(URLS["healthjobsuk"])
+
+    WebDriverWait(driver, 20).until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, "a.jobTitle"))
+    )
+
+    jobs = driver.find_elements(By.CSS_SELECTOR, "a.jobTitle")
+
+    for job in jobs:
+        title = job.text.strip()
+        href = job.get_attribute("href")
+
+        if not title or not href:
+            continue
+
+        if not relevant_job(title):
+            continue
+
+        full_link = urljoin("https://www.healthjobsuk.com", href)
+        job_id = extract_job_id(full_link)
+
+        if job_id in seen_jobs:
+            continue
+
+        message = f"🚨 HealthJobsUK\n\n🏥 {title}\n🔗 {full_link}"
+
+        print(message)
+        send_telegram(message)
+        save_seen(job_id)
+        seen_jobs.add(job_id)
+
+
+def scrape_hscni(driver, seen_jobs):
+    print("🔎 HSCNI (Northern Ireland)...")
+
+    driver.get(URLS["hscni"])
+
+    WebDriverWait(driver, 20).until(
+        EC.presence_of_element_located((By.TAG_NAME, "a"))
+    )
+
+    links = driver.find_elements(By.TAG_NAME, "a")
+
+    for link in links:
+        title = link.text.strip()
+        href = link.get_attribute("href")
+
+        if not title or not href:
+            continue
+
+        if not relevant_job(title):
+            continue
+
+        job_id = extract_job_id(href)
+
+        if job_id in seen_jobs:
+            continue
+
+        message = f"🚨 Northern Ireland Job\n\n🏥 {title}\n🔗 {href}"
+
+        print(message)
+        send_telegram(message)
+        save_seen(job_id)
+        seen_jobs.add(job_id)
+
+
+def scrape_scotland(driver, seen_jobs):
+    print("🔎 NHS Scotland...")
+
+    driver.get(URLS["nhs_scotland"])
+
+    WebDriverWait(driver, 20).until(
+        EC.presence_of_element_located((By.TAG_NAME, "a"))
+    )
+
+    links = driver.find_elements(By.TAG_NAME, "a")
+
+    for link in links:
+        title = link.text.strip()
+        href = link.get_attribute("href")
+
+        if not title or not href:
+            continue
+
+        if not relevant_job(title):
+            continue
+
+        job_id = extract_job_id(href)
+
+        if job_id in seen_jobs:
+            continue
+
+        message = f"🚨 Scotland Job\n\n🏥 {title}\n🔗 {href}"
+
+        print(message)
+        send_telegram(message)
         save_seen(job_id)
         seen_jobs.add(job_id)
 
@@ -168,7 +245,7 @@ def scrape_site(driver, url, seen_jobs):
 # ================= MAIN LOOP ================= #
 
 def main():
-    print("🚀 Smart NHS Job Bot Started...\n")
+    print("🚀 Smart UK NHS Doctor Job Bot Started...\n")
 
     seen_jobs = load_seen()
 
@@ -178,8 +255,10 @@ def main():
         try:
             driver = get_driver()
 
-            for url in URLS:
-                scrape_site(driver, url, seen_jobs)
+            scrape_nhs_jobs(driver, seen_jobs)
+            scrape_healthjobsuk(driver, seen_jobs)
+            scrape_hscni(driver, seen_jobs)
+            scrape_scotland(driver, seen_jobs)
 
         except Exception as e:
             print("❌ Main loop error:", e)
