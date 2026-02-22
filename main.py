@@ -1,8 +1,8 @@
 import requests
-from bs4 import BeautifulSoup
 import time
 import re
 import os
+
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -11,20 +11,23 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-# ---------------- CONFIG ---------------- #
-BOT_TOKEN = "YOUR_BOT_TOKEN"
-CHAT_ID = "YOUR_CHAT_ID"
+
+# ================= CONFIG ================= #
+
+BOT_TOKEN = "1234567890:AAAFakeExampleBotToken123456789"
+CHAT_ID = "-1001234567890"
+
 CHECK_INTERVAL = 300  # 5 minutes
 
 URLS = [
-    "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=94511",
+    "https://www.healthjobsuk.com/job_list",
     "https://www.jobs.nhs.uk/candidate/search/results?keyword=doctor&sort=publicationDateDesc",
     "https://jobs.hscni.net/Search?SearchCatID=0",
+    "https://apply.jobs.scot.nhs.uk/Home/Search"
 ]
 
-SCOTLAND_URL = "https://apply.jobs.scot.nhs.uk/Home/Search"
 
-# ---------------- FILTER LOGIC ---------------- #
+# ================= FILTER LOGIC ================= #
 
 MEDICAL_SPECIALTIES = [
     "medicine", "internal medicine", "general medicine",
@@ -39,8 +42,9 @@ GRADE_KEYWORDS = [
     "foundation", "fy1", "fy2",
     "ct1", "ct2", "ct3",
     "st1", "st2", "st3",
-    "registrar", "sas doctor",
-    "specialty doctor", "trust doctor",
+    "registrar",
+    "sas doctor", "specialty doctor",
+    "trust doctor",
     "clinical fellow", "junior fellow",
     "locum doctor"
 ]
@@ -54,24 +58,22 @@ EXCLUDE_KEYWORDS = [
 ]
 
 
-# ---------------- DRIVER SETUP ---------------- #
+# ================= DRIVER SETUP ================= #
+
 def get_driver():
     chrome_options = Options()
+    chrome_options.binary_location = "/usr/bin/google-chrome"
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--window-size=1920,1080")
-    # Masking as a real browser
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
 
-    try:
-        return webdriver.Chrome(options=chrome_options)
-    except Exception as e:
-        print(f"❌ Selenium could not start: {e}")
-        print("💡 Tip: Ensure Google Chrome is installed in your container environment.")
-        return None
-# ---------------- UTILS ---------------- #
+    service = Service(ChromeDriverManager().install())
+    return webdriver.Chrome(service=service, options=chrome_options)
+
+
+# ================= UTILITIES ================= #
 
 def load_seen():
     if os.path.exists("seen_jobs.txt"):
@@ -79,13 +81,13 @@ def load_seen():
             return set(f.read().splitlines())
     return set()
 
+
 def save_seen(job_id):
     with open("seen_jobs.txt", "a") as f:
         f.write(job_id + "\n")
 
+
 def send_telegram(message):
-    if not BOT_TOKEN or not CHAT_ID:
-        return
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": message}
     try:
@@ -93,137 +95,102 @@ def send_telegram(message):
     except Exception as e:
         print("Telegram Error:", e)
 
+
 def extract_job_id(link):
     match = re.search(r"\d{5,}", link)
     return match.group() if match else link
 
+
 def relevant_job(title):
     t = title.lower()
+
     if any(ex in t for ex in EXCLUDE_KEYWORDS):
         return False
+
     if not any(sp in t for sp in MEDICAL_SPECIALTIES):
         return False
+
     if not any(gr in t for gr in GRADE_KEYWORDS):
         return False
+
     return True
 
-def normalize_link(link, base):
-    if link.startswith("/"):
-        return base + link
-    return link
 
-# ---------------- REQUESTS SCRAPER ---------------- #
+# ================= SCRAPER ================= #
 
-def check_site(url, seen_jobs):
-    print(f"Checking {url}")
-    headers = {"User-Agent": "Mozilla/5.0"}
+def scrape_site(driver, url, seen_jobs):
+    print(f"\n🔎 Checking: {url}")
 
-    try:
-        response = requests.get(url, headers=headers, timeout=15)
-        soup = BeautifulSoup(response.text, "html.parser")
-        links = soup.find_all("a", href=True)
+    driver.get(url)
 
-        base_url = re.match(r"(https?://[^/]+)", url).group(1)
+    WebDriverWait(driver, 20).until(
+        EC.presence_of_element_located((By.TAG_NAME, "body"))
+    )
 
-        for a in links:
-            title = a.get_text(strip=True)
-            link = normalize_link(a["href"], base_url)
+    time.sleep(4)
 
-            if not title or len(title) < 6:
-                continue
+    links = driver.find_elements(By.TAG_NAME, "a")
 
-            if not re.search(r"\d+", link):
-                continue
+    for link in links:
+        title = link.text.strip()
+        href = link.get_attribute("href")
 
-            if not relevant_job(title):
-                continue
+        if not href or not title:
+            continue
 
-            job_id = extract_job_id(link)
-            if job_id in seen_jobs:
-                continue
+        if len(title) < 6:
+            continue
 
-            message = f"🚨 New Job Found!\n\n🏥 {title}\n🔗 {link}"
-            print(message)
-            send_telegram(message)
+        if not re.search(r"\d{5,}", href):
+            continue
 
-            save_seen(job_id)
-            seen_jobs.add(job_id)
+        if not relevant_job(title):
+            continue
 
-    except Exception as e:
-        print(f"Error checking {url}: {e}")
+        job_id = extract_job_id(href)
 
-# ---------------- SCOTLAND (SELENIUM) ---------------- #
+        if job_id in seen_jobs:
+            continue
 
-def check_scotland(driver, seen_jobs):
-    print("Checking Scotland jobs...")
-
-    try:
-        driver.get(SCOTLAND_URL)
-
-        WebDriverWait(driver, 15).until(
-            EC.presence_of_element_located((By.TAG_NAME, "body"))
+        message = (
+            "🚨 Relevant NHS Doctor Job Found!\n\n"
+            f"🏥 {title}\n"
+            f"🔗 {href}"
         )
 
-        time.sleep(5)
+        print(message)
+        send_telegram(message)
 
-        links = driver.find_elements(By.TAG_NAME, "a")
+        save_seen(job_id)
+        seen_jobs.add(job_id)
 
-        for a in links:
-            title = a.text.strip()
-            href = a.get_attribute("href")
 
-            if not href or not title or len(title) < 8:
-                continue
-
-            if "JobDetail" not in href and not re.search(r"\d{6,}", href):
-                continue
-
-            if not relevant_job(title):
-                continue
-
-            job_id = extract_job_id(href)
-            if job_id in seen_jobs:
-                continue
-
-            message = f"🚨 Scotland Job Found!\n\n🏥 {title}\n🔗 {href}"
-            print(message)
-            send_telegram(message)
-
-            save_seen(job_id)
-            seen_jobs.add(job_id)
-
-    except Exception as e:
-        print("Error checking Scotland:", e)
-
-# ---------------- MAIN LOOP ---------------- #
+# ================= MAIN LOOP ================= #
 
 def main():
-    print("🚀 NHS Job Bot Started...")
+    print("🚀 Smart NHS Job Bot Started...\n")
+
     seen_jobs = load_seen()
 
-    try:
-        while True:
-            # 1. Check Standard Sites (No Selenium needed)
-            for url in URLS:
-                check_site(url, seen_jobs)
+    while True:
+        driver = None
 
-            # 2. Check Scotland (Requires Selenium)
+        try:
             driver = get_driver()
+
+            for url in URLS:
+                scrape_site(driver, url, seen_jobs)
+
+        except Exception as e:
+            print("❌ Main loop error:", e)
+
+        finally:
             if driver:
-                try:
-                    check_scotland(driver, seen_jobs)
-                finally:
-                    driver.quit() # Close browser after check to save memory
-            else:
-                print("⚠️ Skipping Scotland check (Browser not available).")
+                driver.quit()
 
-            print(f"Waiting {CHECK_INTERVAL} seconds...\n")
-            time.sleep(CHECK_INTERVAL)
+        print(f"\n⏳ Sleeping for {CHECK_INTERVAL} seconds...\n")
+        time.sleep(CHECK_INTERVAL)
 
-    except KeyboardInterrupt:
-        print("Stopping bot...")
-    finally:
-        driver.quit()
 
 if __name__ == "__main__":
     main()
