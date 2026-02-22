@@ -1,4 +1,4 @@
+selenium>=4.10.0
 requests
-selenium
-webdriver-manager
 beautifulsoup4
+webdriver-manager
