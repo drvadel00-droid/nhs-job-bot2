@@ -1,21 +1,34 @@
-import os
-import time
 import requests
-from bs4 import BeautifulSoup
+import time
+import os
+from urllib.parse import urljoin
+
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from urllib.parse import urljoin, urlencode
+from selenium.common.exceptions import TimeoutException
+
 
 # ================= CONFIG ================= #
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
+
 CHECK_INTERVAL = 300  # 5 minutes
 
+URLS = {
+    "nhs_jobs": "https://www.jobs.nhs.uk/candidate/search/results?keyword=doctor&sort=publicationDateDesc",
+    "healthjobsuk": "https://www.healthjobsuk.com/job_list",
+    "hscni": "https://jobs.hscni.net/Search?SearchCatID=0",
+    "nhs_scotland": "https://apply.jobs.scot.nhs.uk/Home/Search"
+}
+
+
 # ================= FILTER LOGIC ================= #
+
 EXCLUDE_KEYWORDS = [
     "consultant", "st4", "st5", "st6", "st7",
     "nurse", "midwife", "psychologist",
@@ -24,11 +37,12 @@ EXCLUDE_KEYWORDS = [
 ]
 
 DOCTOR_TERMS = [
-    "doctor", "clinical fellow", "junior clinical fellow",
-    "senior clinical fellow", "registrar", "trust doctor",
-    "specialty doctor", "core trainee", "ct1", "ct2", "ct3",
+    "doctor", "registrar", "trust doctor",
+    "specialty doctor", "clinical fellow", "junior clinical fellow",
+    "senior clinical fellow", "core trainee", "ct1", "ct2", "ct3",
     "st1", "st2", "st3", "fy1", "fy2"
 ]
+
 
 def relevant_job(title):
     t = title.lower()
@@ -36,16 +50,35 @@ def relevant_job(title):
         return False
     return any(term in t for term in DOCTOR_TERMS)
 
+
+# ================= DRIVER SETUP ================= #
+
+def get_driver():
+    chrome_options = Options()
+    chrome_options.binary_location = "/usr/bin/google-chrome"  # change if needed
+    chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--window-size=1920,1080")
+
+    service = Service()
+    return webdriver.Chrome(service=service, options=chrome_options)
+
+
 # ================= UTILITIES ================= #
+
 def load_seen():
     if os.path.exists("seen_jobs.txt"):
         with open("seen_jobs.txt", "r") as f:
             return set(f.read().splitlines())
     return set()
 
+
 def save_seen(job_id):
     with open("seen_jobs.txt", "a") as f:
         f.write(job_id + "\n")
+
 
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -55,80 +88,92 @@ def send_telegram(message):
     except Exception as e:
         print("Telegram error:", e)
 
-# ================= DRIVER ================= #
-def get_driver():
-    options = Options()
-    options.add_argument("--headless=new")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--window-size=1920,1080")
-    service = Service()
-    return webdriver.Chrome(service=service, options=options)
 
-# ================= NHS JOBS ENGLAND ================= #
-def scrape_nhs_jobs(seen_jobs):
-    print("🔎 NHS Jobs England (API)...")
-    base_url = "https://www.jobs.nhs.uk/xi/search"
-    params = {"q": "doctor", "sort": "publicationDateDesc"}
+def extract_job_id(link):
+    return link.split("?")[0]
+
+
+# ================= SCRAPERS ================= #
+
+def scrape_nhs_jobs(driver, seen_jobs):
+    print("🔎 NHS Jobs England...")
+    driver.get(URLS["nhs_jobs"])
+
     try:
-        resp = requests.get(base_url, params=params, timeout=15)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        links = soup.select("a[data-test='search-result-job-title']")
-        for job in links:
-            title = job.text.strip()
-            href = urljoin(base_url, job.get("href"))
-            if not relevant_job(title):
-                continue
-            job_id = href.split("?")[0]
-            if job_id in seen_jobs:
-                continue
-            message = f"🚨 NHS England Job\n\n🏥 {title}\n🔗 {href}"
-            print(message)
-            send_telegram(message)
-            save_seen(job_id)
-            seen_jobs.add(job_id)
-    except Exception as e:
-        print("NHS Jobs Error:", e)
+        WebDriverWait(driver, 25).until(
+            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "a[data-test='search-result-job-title']"))
+        )
+    except TimeoutException:
+        print("⚠️ NHS Jobs: no jobs loaded")
+        return
 
-# ================= HEALTHJOBSUK ================= #
-def scrape_healthjobsuk(seen_jobs):
+    jobs = driver.find_elements(By.CSS_SELECTOR, "a[data-test='search-result-job-title']")
+
+    for job in jobs:
+        title = job.text.strip()
+        href = job.get_attribute("href")
+        if not title or not href or not relevant_job(title):
+            continue
+        job_id = extract_job_id(href)
+        if job_id in seen_jobs:
+            continue
+        message = f"🚨 NHS England Job\n\n🏥 {title}\n🔗 {href}"
+        print(message)
+        send_telegram(message)
+        save_seen(job_id)
+        seen_jobs.add(job_id)
+
+
+def scrape_healthjobsuk(driver, seen_jobs):
     print("🔎 HealthJobsUK...")
-    base_url = "https://www.healthjobsuk.com/job_list"
-    try:
-        resp = requests.get(base_url, timeout=15)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        jobs = soup.select("a.jobTitle")
-        for job in jobs:
-            title = job.text.strip()
-            href = urljoin(base_url, job.get("href"))
-            if not relevant_job(title):
-                continue
-            job_id = href.split("?")[0]
-            if job_id in seen_jobs:
-                continue
-            message = f"🚨 HealthJobsUK\n\n🏥 {title}\n🔗 {href}"
-            print(message)
-            send_telegram(message)
-            save_seen(job_id)
-            seen_jobs.add(job_id)
-    except Exception as e:
-        print("HealthJobsUK Error:", e)
+    driver.get(URLS["healthjobsuk"])
+    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")  # load more
 
-# ================= HSCNI ================= #
+    try:
+        WebDriverWait(driver, 25).until(
+            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "a.jobTitle"))
+        )
+    except TimeoutException:
+        print("⚠️ HealthJobsUK: no jobs loaded")
+        return
+
+    jobs = driver.find_elements(By.CSS_SELECTOR, "a.jobTitle")
+
+    for job in jobs:
+        title = job.text.strip()
+        href = job.get_attribute("href")
+        if not title or not href or not relevant_job(title):
+            continue
+        full_link = urljoin("https://www.healthjobsuk.com", href)
+        job_id = extract_job_id(full_link)
+        if job_id in seen_jobs:
+            continue
+        message = f"🚨 HealthJobsUK\n\n🏥 {title}\n🔗 {full_link}"
+        print(message)
+        send_telegram(message)
+        save_seen(job_id)
+        seen_jobs.add(job_id)
+
+
 def scrape_hscni(driver, seen_jobs):
-    print("🔎 HSCNI (NI)...")
-    url = "https://jobs.hscni.net/Search?SearchCatID=0"
-    driver.get(url)
-    WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.TAG_NAME, "a")))
+    print("🔎 HSCNI (Northern Ireland)...")
+    driver.get(URLS["hscni"])
+    try:
+        WebDriverWait(driver, 25).until(
+            EC.presence_of_all_elements_located((By.TAG_NAME, "a"))
+        )
+    except TimeoutException:
+        print("⚠️ HSCNI: no jobs loaded")
+        return
+
     links = driver.find_elements(By.TAG_NAME, "a")
+
     for link in links:
         title = link.text.strip()
         href = link.get_attribute("href")
-        if not title or not href:
+        if not title or not href or not relevant_job(title):
             continue
-        if not relevant_job(title):
-            continue
-        job_id = href.split("?")[0]
+        job_id = extract_job_id(href)
         if job_id in seen_jobs:
             continue
         message = f"🚨 Northern Ireland Job\n\n🏥 {title}\n🔗 {href}"
@@ -137,48 +182,57 @@ def scrape_hscni(driver, seen_jobs):
         save_seen(job_id)
         seen_jobs.add(job_id)
 
-# ================= NHS SCOTLAND ================= #
+
 def scrape_scotland(driver, seen_jobs):
     print("🔎 NHS Scotland...")
-    url = "https://apply.jobs.scot.nhs.uk/Home/Search"
-    driver.get(url)
-    WebDriverWait(driver, 20).until(EC.presence_of_all_elements_located((By.TAG_NAME, "tr")))
-    rows = driver.find_elements(By.TAG_NAME, "tr")
-    for row in rows:
-        try:
-            a = row.find_element(By.TAG_NAME, "a")
-            title = a.text.strip()
-            href = a.get_attribute("href")
-            if not title or not href:
-                continue
-            if not relevant_job(title):
-                continue
-            job_id = href.split("?")[0]
-            if job_id in seen_jobs:
-                continue
-            message = f"🚨 Scotland Job\n\n🏥 {title}\n🔗 {href}"
-            print(message)
-            send_telegram(message)
-            save_seen(job_id)
-            seen_jobs.add(job_id)
-        except:
+    driver.get(URLS["nhs_scotland"])
+    try:
+        WebDriverWait(driver, 25).until(
+            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "a[data-testid='jobTitleLink']"))
+        )
+    except TimeoutException:
+        print("⚠️ NHS Scotland: no jobs loaded")
+        return
+
+    jobs = driver.find_elements(By.CSS_SELECTOR, "a[data-testid='jobTitleLink']")
+
+    for job in jobs:
+        title = job.text.strip()
+        href = job.get_attribute("href")
+        if not title or not href or not relevant_job(title):
             continue
+        job_id = extract_job_id(href)
+        if job_id in seen_jobs:
+            continue
+        message = f"🚨 NHS Scotland Job\n\n🏥 {title}\n🔗 {href}"
+        print(message)
+        send_telegram(message)
+        save_seen(job_id)
+        seen_jobs.add(job_id)
+
 
 # ================= MAIN LOOP ================= #
+
 def main():
-    print("🚀 Smart UK NHS Doctor Job Bot Started...")
+    print("🚀 Smart UK NHS Doctor Job Bot Started...\n")
     seen_jobs = load_seen()
-    driver = get_driver()
+
     while True:
+        driver = None
         try:
-            scrape_nhs_jobs(seen_jobs)
-            scrape_healthjobsuk(seen_jobs)
+            driver = get_driver()
+            scrape_nhs_jobs(driver, seen_jobs)
+            scrape_healthjobsuk(driver, seen_jobs)
             scrape_hscni(driver, seen_jobs)
             scrape_scotland(driver, seen_jobs)
         except Exception as e:
-            print("Main loop error:", e)
-        print(f"⏳ Sleeping for {CHECK_INTERVAL} seconds...\n")
+            print("❌ Main loop error:", e)
+        finally:
+            if driver:
+                driver.quit()
+        print(f"\n⏳ Sleeping for {CHECK_INTERVAL} seconds...\n")
         time.sleep(CHECK_INTERVAL)
+
 
 if __name__ == "__main__":
     main()
