@@ -6,8 +6,8 @@ import os
 import datetime
 
 # ---------------- CONFIG ---------------- #
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
+BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"  # Your bot token
+CHAT_ID = "-1003888963521"  # Your private channel numeric ID
 CHECK_INTERVAL = 120  # seconds
 
 URLS = [
