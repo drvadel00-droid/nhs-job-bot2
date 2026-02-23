@@ -3,7 +3,6 @@ from bs4 import BeautifulSoup
 import time
 import re
 import os
-import datetime
 
 # ---------------- CONFIG ---------------- #
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -20,7 +19,7 @@ URLS = [
     # Northern Ireland
     "https://jobs.hscni.net/Search?SearchCatID=0",
 
-    # Scotland NHS jobs (public page)
+    # Scotland NHS jobs
     "https://apply.jobs.scot.nhs.uk/Home/Search"
 ]
 
@@ -28,9 +27,10 @@ URLS = [
 MEDICAL_SPECIALTIES = [
     "medicine", "internal medicine", "general medicine", "paediatric", "pediatric",
     "surgery", "general surgery", "trauma", "orthopaedic", "orthopedic", "plastic",
-    "emergency medicine", "emergency department", "oncology", "cardiology",
-    "respiratory", "gastroenterology", "neurology", "obstetrics", "gynaecology",
-    "haematology"
+    "emergency medicine", "emergency department", "acute medicine",
+    "intensive care", "critical care", "oncology", "cardiology",
+    "respiratory", "gastroenterology", "neurology", "nephrology",
+    "obstetrics", "gynaecology", "haematology"
 ]
 
 GRADE_KEYWORDS = [
@@ -39,8 +39,8 @@ GRADE_KEYWORDS = [
     "st1", "st2", "st3",
     "registrar",
     "sas doctor", "specialty doctor", "trust doctor",
-    "clinical fellow", "junior fellow", "research fellow",
-    "teaching fellow", "locum doctor"
+    "clinical fellow", "junior fellow",
+    "research fellow", "teaching fellow", "locum doctor"
 ]
 
 EXCLUDE_KEYWORDS = [
@@ -110,8 +110,10 @@ def check_site(url, seen_jobs):
             if not title or len(title) < 5:
                 continue
 
-            # NHS Jobs England may have links without '/Job/', just ensure link has digits
-            if not re.search(r"\d+", link):
+            # Filter only real job links for NHS England and HealthJobsUK
+            if "jobs.nhs.uk" in url and "/Job/" not in link and "/JobDetails.aspx" not in link:
+                continue
+            if "healthjobsuk.com" in url and "/Job/" not in link:
                 continue
 
             if not relevant_job(title):
@@ -121,11 +123,9 @@ def check_site(url, seen_jobs):
             if job_id in seen_jobs:
                 continue
 
-            # Treat all jobs as recent for NHS Jobs England
             message = f"🚨 New Job Found!\n\n🏥 {title}\n🔗 Apply: {link}"
             print(message + "\n")
             send_telegram(message)
-
             save_seen(job_id)
             seen_jobs.add(job_id)
 
@@ -173,6 +173,7 @@ def main():
                 check_scotland(seen_jobs)
             else:
                 check_site(url, seen_jobs)
+        print(f"⏳ Sleeping for {CHECK_INTERVAL} seconds...\n")
         time.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
