@@ -2,9 +2,10 @@ import requests
 from bs4 import BeautifulSoup
 import time
 import re
-import os
+import sys
+from datetime import datetime
 
-# ---------------- CONFIG ---------------- #
+# ================= CONFIG ================= #
 BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"
 CHAT_ID = "-1003888963521"
 CHECK_INTERVAL = 120  # seconds
