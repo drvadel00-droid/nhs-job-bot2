@@ -5,8 +5,8 @@ import re
 import os
 
 # ---------------- CONFIG ---------------- #
-BOT_TOKEN = os.environ.get("8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ")
-CHAT_ID = os.environ.get("-1003888963521")
+BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"
+CHAT_ID = "-1003888963521"
 CHECK_INTERVAL = 120  # seconds
 
 URLS = [
