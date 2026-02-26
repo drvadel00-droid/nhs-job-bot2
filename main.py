@@ -62,7 +62,7 @@ EXCLUDE_KEYWORDS = [
     "scientist",
     "practitioner",
     "nutritionist",
-    "nutrition"
+    "nutrition", "coordinator", "therapist", "secretary"
 ]
 
 # ================= LOGGING ================= #
