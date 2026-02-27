@@ -82,13 +82,33 @@ def save_seen(job_id):
         f.write(job_id + "\n")
 
 def send_telegram(message):
-    try:
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-        payload = {"chat_id": CHAT_ID, "text": message}
-        r = requests.post(url, data=payload, timeout=10)
-        log(f"Telegram status: {r.status_code}")
-    except Exception as e:
-        log(f"Telegram ERROR: {e}")
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": message}
+
+    while True:
+        try:
+            r = requests.post(url, data=payload, timeout=10)
+
+            if r.status_code == 200:
+                log(f"Telegram status: {r.status_code}")
+                break  # successfully sent
+
+            elif r.status_code == 429:
+                retry_after = 5  # default in case Telegram does not provide
+                try:
+                    retry_after = r.json().get("parameters", {}).get("retry_after", 5)
+                except:
+                    pass
+                log(f"⚠️ Telegram rate limit hit (429). Sleeping for {retry_after} seconds...")
+                time.sleep(retry_after)
+
+            else:
+                log(f"Telegram error: {r.status_code}")
+                break
+
+        except Exception as e:
+            log(f"Telegram ERROR: {e}")
+            break
 
 def relevant_job(title):
     t = title.lower()
