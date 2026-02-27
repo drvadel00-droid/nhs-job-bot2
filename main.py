@@ -47,7 +47,7 @@ GRADE_KEYWORDS = [
     "st1", "st2", "st3",
     "registrar",
     "trust doctor", "trust grade",
-    "clinical fellow", "junior fellow",
+    "clinical fellow", "junior fellow", "junior clinical fellow", 
     "specialty doctor",
     "junior",
     "locum doctor"
