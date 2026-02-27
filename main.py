@@ -38,7 +38,7 @@ MEDICAL_SPECIALTIES = [
     "surgery", "general surgery", "trauma", "orthopaedic",
     "plastic", "emergency", "cardiology", "respiratory",
     "gastro", "neurology", "paediatric", "haematology",
-    "intensive care", "critical care", "icu"
+    "intensive care", "critical care", "icu", "vascular", "urology"
 ]
 
 GRADE_KEYWORDS = [
@@ -62,7 +62,7 @@ EXCLUDE_KEYWORDS = [
     "scientist",
     "practitioner",
     "nutritionist",
-    "nutrition", "coordinator", "therapist", "secretary"
+    "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker"
 ]
 
 # ================= LOGGING ================= #
