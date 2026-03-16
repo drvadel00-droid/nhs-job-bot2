@@ -20,7 +20,6 @@ URLS = [
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=558&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=110250&_srt=startdate&_sd=a",
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=581&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=44291&_srt=startdate&_sd=a",
     
-
     # NHS Jobs England
     "https://www.jobs.nhs.uk/candidate/search/results?keyword=doctor&sort=publicationDateDesc",
     "https://www.jobs.nhs.uk/candidate/search/results?searchFormType=sortBy&sort=publicationDateDesc&searchByLocationOnly=true&language=en#",
@@ -81,6 +80,7 @@ def save_seen(job_id):
     with open("seen_jobs.txt", "a") as f:
         f.write(job_id + "\n")
 
+# ================= TELEGRAM SENDER WITH 429 HANDLER ================= #
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": message}
@@ -91,15 +91,15 @@ def send_telegram(message):
 
             if r.status_code == 200:
                 log(f"Telegram status: {r.status_code}")
-                break  # successfully sent
+                break  # success
 
             elif r.status_code == 429:
-                retry_after = 5  # default in case Telegram does not provide
+                retry_after = 5  # default
                 try:
                     retry_after = r.json().get("parameters", {}).get("retry_after", 5)
                 except:
                     pass
-                log(f"⚠️ Telegram rate limit hit (429). Sleeping for {retry_after} seconds...")
+                log(f"⚠️ Telegram rate limit hit (429). Sleeping {retry_after} seconds...")
                 time.sleep(retry_after)
 
             else:
@@ -133,6 +133,21 @@ def normalize_link(link, base):
         return base + link
     return link
 
+# ================= HEALTHJOBS DETAIL FETCH ================= #
+def fetch_real_title(url):
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(url, headers=headers, timeout=10)
+        if r.status_code != 200:
+            return None
+        soup = BeautifulSoup(r.text, "html.parser")
+        h1 = soup.find("h1")
+        if h1:
+            return h1.get_text(strip=True)
+    except Exception as e:
+        log(f"Error fetching real title: {e}")
+    return None
+
 # ================= SCRAPER ================= #
 def check_site(url, seen_jobs):
     log(f"Checking: {url}")
@@ -140,12 +155,10 @@ def check_site(url, seen_jobs):
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
         r = requests.get(url, headers=headers, timeout=20)
-
         log(f"Status code: {r.status_code}")
 
         soup = BeautifulSoup(r.text, "html.parser")
         links = soup.find_all("a", href=True)
-
         log(f"Found {len(links)} total links")
 
         base = re.match(r"(https?://[^/]+)", url).group(1)
@@ -153,10 +166,10 @@ def check_site(url, seen_jobs):
         new_jobs = 0
 
         for a in links:
-            title = a.get_text(strip=True)
+            raw_text = a.get_text(strip=True)
             link = normalize_link(a["href"], base)
 
-            if not title or len(title) < 5:
+            if not raw_text or len(raw_text) < 5:
                 continue
 
             # NHS Jobs filter
@@ -167,16 +180,23 @@ def check_site(url, seen_jobs):
             if "healthjobsuk.com" in url and "job" not in link.lower():
                 continue
 
+            # Fetch full title from HealthJobsUK job page
+            if "healthjobsuk.com/job/" in link:
+                title = fetch_real_title(link)
+                if not title:
+                    title = raw_text
+                time.sleep(1)  # polite delay
+            else:
+                title = raw_text
+
             if not relevant_job(title):
                 continue
 
             job_id = extract_job_id(link)
-
             if job_id in seen_jobs:
                 continue
 
             message = f"🚨 NEW NHS JOB\n\n🏥 {title}\n🔗 {link}"
-
             log(f"NEW JOB: {title}")
             send_telegram(message)
 
@@ -197,7 +217,6 @@ def main():
     while True:
         for url in URLS:
             check_site(url, seen_jobs)
-
         log(f"Sleeping {CHECK_INTERVAL} seconds...\n")
         time.sleep(CHECK_INTERVAL)
 
