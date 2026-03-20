@@ -58,7 +58,7 @@ EXCLUDE_KEYWORDS = [
     "manager", "director", "admin",
     "physiotherapist", "radiographer",
     "lead",
-    "scientist",
+    "scientist", "receptionist", "housekeeper", "cook", "clerk", 
     "practitioner",
     "nutritionist",
     "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker"
