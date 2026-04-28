@@ -68,6 +68,14 @@ EXCLUDE_KEYWORDS = [
 def log(message):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}", flush=True)
 
+# ================= HEADERS (NEW) ================= #
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-GB,en;q=0.9",
+    "Connection": "keep-alive"
+}
+
 # ================= UTILITIES ================= #
 def load_seen():
     try:
@@ -80,7 +88,7 @@ def save_seen(job_id):
     with open("seen_jobs.txt", "a") as f:
         f.write(job_id + "\n")
 
-# ================= TELEGRAM SENDER WITH 429 HANDLER ================= #
+# ================= TELEGRAM ================= #
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": message}
@@ -91,15 +99,15 @@ def send_telegram(message):
 
             if r.status_code == 200:
                 log(f"Telegram status: {r.status_code}")
-                break  # success
+                break
 
             elif r.status_code == 429:
-                retry_after = 5  # default
+                retry_after = 5
                 try:
                     retry_after = r.json().get("parameters", {}).get("retry_after", 5)
                 except:
                     pass
-                log(f"⚠️ Telegram rate limit hit (429). Sleeping {retry_after} seconds...")
+                log(f"⚠️ Telegram rate limit hit. Sleeping {retry_after}s")
                 time.sleep(retry_after)
 
             else:
@@ -133,19 +141,27 @@ def normalize_link(link, base):
         return base + link
     return link
 
-# ================= HEALTHJOBS DETAIL FETCH ================= #
+# ================= FETCH TITLE ================= #
 def fetch_real_title(url):
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get(url, headers=headers, timeout=10)
+        r = requests.get(url, headers=HEADERS, timeout=10)
+
+        if r.status_code == 403:
+            log("⚠️ 403 on job page, retrying...")
+            time.sleep(5)
+            r = requests.get(url, headers=HEADERS, timeout=10)
+
         if r.status_code != 200:
             return None
+
         soup = BeautifulSoup(r.text, "html.parser")
         h1 = soup.find("h1")
         if h1:
             return h1.get_text(strip=True)
+
     except Exception as e:
         log(f"Error fetching real title: {e}")
+
     return None
 
 # ================= SCRAPER ================= #
@@ -153,8 +169,13 @@ def check_site(url, seen_jobs):
     log(f"Checking: {url}")
 
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get(url, headers=headers, timeout=20)
+        r = requests.get(url, headers=HEADERS, timeout=20)
+
+        if r.status_code == 403:
+            log("⚠️ 403 detected, retrying after delay...")
+            time.sleep(10)
+            r = requests.get(url, headers=HEADERS, timeout=20)
+
         log(f"Status code: {r.status_code}")
 
         soup = BeautifulSoup(r.text, "html.parser")
@@ -172,20 +193,17 @@ def check_site(url, seen_jobs):
             if not raw_text or len(raw_text) < 5:
                 continue
 
-            # NHS Jobs filter
             if "jobs.nhs.uk" in url and "/Job/" not in link:
                 continue
 
-            # HealthJobsUK filter
             if "healthjobsuk.com" in url and "job" not in link.lower():
                 continue
 
-            # Fetch full title from HealthJobsUK job page
             if "healthjobsuk.com/job/" in link:
                 title = fetch_real_title(link)
                 if not title:
                     title = raw_text
-                time.sleep(1)  # polite delay
+                time.sleep(1)
             else:
                 title = raw_text
 
@@ -209,7 +227,7 @@ def check_site(url, seen_jobs):
     except Exception as e:
         log(f"SCRAPER ERROR: {e}")
 
-# ================= MAIN LOOP ================= #
+# ================= MAIN ================= #
 def main():
     log("🚀 NHS JOB BOT STARTED")
     seen_jobs = load_seen()
@@ -217,6 +235,8 @@ def main():
     while True:
         for url in URLS:
             check_site(url, seen_jobs)
+            time.sleep(3)   # ✅ NEW: delay between requests
+
         log(f"Sleeping {CHECK_INTERVAL} seconds...\n")
         time.sleep(CHECK_INTERVAL)
 
