@@ -1,6 +1,12 @@
 import time
 import re
 import os
+import sys
+
+# Force output to appear in logs immediately
+sys.stdout.reconfigure(line_buffering=True)
+print("HEARTBEAT: Script has started and is initializing...")
+
 from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 import requests
@@ -8,7 +14,7 @@ import requests
 # ================= CONFIG ================= #
 BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"
 CHAT_ID = "-1003888963521"
-CHECK_INTERVAL = 300 
+CHECK_INTERVAL = 120 
 DATA_PATH = os.getenv("PERSISTENT_STORAGE", ".") 
 SEEN_FILE = os.path.join(DATA_PATH, "seen_jobs.txt")
 
