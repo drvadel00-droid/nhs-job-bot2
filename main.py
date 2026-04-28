@@ -58,7 +58,7 @@ def check_site(url, seen_jobs):
         page = browser.new_page()
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=60000)
-            page.wait_for_timeout(3000) # Give site 3s to render dynamic content
+            page.wait_for_timeout(3000) 
             
             soup = BeautifulSoup(page.content(), "html.parser")
             links = soup.select('a[href*="/Job/"], a[href*="/job/"]')
@@ -75,8 +75,6 @@ def check_site(url, seen_jobs):
                     send_telegram(f"🚨 NEW NHS JOB\n\n🏥 {title}\n🔗 {link}")
                     seen_jobs.add(job_id_str)
                     with open(SEEN_FILE, "a") as f: f.write(job_id_str + "\n")
-        except Exception as e:
-            print(f"DEBUG Error on {url}: {e}")
         finally:
             browser.close()
 
@@ -85,7 +83,11 @@ def main():
     seen_jobs = load_seen()
     while True:
         for url in URLS:
-            check_site(url, seen_jobs)
+            try:
+                check_site(url, seen_jobs)
+            except Exception as e:
+                print(f"DEBUG: Skipping {url} due to error: {e}")
+                continue 
         time.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
