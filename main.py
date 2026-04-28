@@ -2,23 +2,20 @@ import time
 import re
 import os
 import sys
-
-# Force output to appear in logs immediately
-sys.stdout.reconfigure(line_buffering=True)
-print("HEARTBEAT: Script has started and is initializing...")
-
 from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 import requests
 
+# Force line buffering so Railway logs appear in real-time
+sys.stdout.reconfigure(line_buffering=True)
+
 # ================= CONFIG ================= #
 BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"
 CHAT_ID = "-1003888963521"
-CHECK_INTERVAL = 120 
+CHECK_INTERVAL = 300 
 DATA_PATH = os.getenv("PERSISTENT_STORAGE", ".") 
 SEEN_FILE = os.path.join(DATA_PATH, "seen_jobs.txt")
 
-# FULL LIST OF URLS
 URLS = [
     "https://www.healthjobsuk.com/job_list?JobSearch_Submit=Search&_srt=publicationdate&_sd=desc",
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=534&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=64082&_srt=startdate&_sd=d",
@@ -54,17 +51,24 @@ def load_seen():
 def check_site(url, seen_jobs):
     print(f"DEBUG: Checking: {url}")
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--no-zygote"]
+        )
         page = browser.new_page()
         try:
-            page.goto(url, wait_until="networkidle", timeout=60000)
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(3000) # Give site 3s to render dynamic content
+            
             soup = BeautifulSoup(page.content(), "html.parser")
             links = soup.select('a[href*="/Job/"], a[href*="/job/"]')
+            
             for a in links:
                 title = a.get_text(strip=True)
                 if not title or not relevant_job(title): continue
                 link = a['href']
                 if not link.startswith("http"): link = "/".join(url.split('/')[:3]) + link
+                
                 job_id = re.search(r"\d+", link)
                 if job_id and job_id.group() not in seen_jobs:
                     job_id_str = job_id.group()
@@ -72,13 +76,13 @@ def check_site(url, seen_jobs):
                     seen_jobs.add(job_id_str)
                     with open(SEEN_FILE, "a") as f: f.write(job_id_str + "\n")
         except Exception as e:
-            print(f"DEBUG Error: {e}")
+            print(f"DEBUG Error on {url}: {e}")
         finally:
             browser.close()
 
 def main():
+    print("HEARTBEAT: Script initialized...")
     seen_jobs = load_seen()
-    print("Bot started...")
     while True:
         for url in URLS:
             check_site(url, seen_jobs)
