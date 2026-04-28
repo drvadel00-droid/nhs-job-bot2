@@ -68,7 +68,7 @@ EXCLUDE_KEYWORDS = [
 def log(message):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}", flush=True)
 
-# ================= HEADERS (NEW) ================= #
+# ================= HEADERS ================= #
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -144,12 +144,21 @@ def normalize_link(link, base):
 # ================= FETCH TITLE ================= #
 def fetch_real_title(url):
     try:
-        r = requests.get(url, headers=HEADERS, timeout=10)
+        session = requests.Session()
+        session.headers.update(HEADERS)
+
+        r = session.get(url, timeout=10)
 
         if r.status_code == 403:
-            log("⚠️ 403 on job page, retrying...")
+            log("⚠️ 403 on job page, retrying with new session...")
             time.sleep(5)
-            r = requests.get(url, headers=HEADERS, timeout=10)
+
+            session = requests.Session()
+            session.headers.update(HEADERS)
+            r = session.get(url, timeout=10)
+
+            if r.status_code == 403:
+                return None
 
         if r.status_code != 200:
             return None
@@ -169,12 +178,22 @@ def check_site(url, seen_jobs):
     log(f"Checking: {url}")
 
     try:
-        r = requests.get(url, headers=HEADERS, timeout=20)
+        session = requests.Session()
+        session.headers.update(HEADERS)
+
+        r = session.get(url, timeout=20)
 
         if r.status_code == 403:
-            log("⚠️ 403 detected, retrying after delay...")
-            time.sleep(10)
-            r = requests.get(url, headers=HEADERS, timeout=20)
+            log("⚠️ 403 detected, trying with fresh session + delay...")
+            time.sleep(15)
+
+            session = requests.Session()
+            session.headers.update(HEADERS)
+            r = session.get(url, timeout=20)
+
+            if r.status_code == 403:
+                log("❌ Still blocked (403). Skipping this cycle.")
+                return
 
         log(f"Status code: {r.status_code}")
 
@@ -235,7 +254,7 @@ def main():
     while True:
         for url in URLS:
             check_site(url, seen_jobs)
-            time.sleep(3)   # ✅ NEW: delay between requests
+            time.sleep(3)
 
         log(f"Sleeping {CHECK_INTERVAL} seconds...\n")
         time.sleep(CHECK_INTERVAL)
