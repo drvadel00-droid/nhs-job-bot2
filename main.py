@@ -51,32 +51,30 @@ def load_seen():
 def check_site(url, seen_jobs):
     print(f"DEBUG: Checking: {url}")
     with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--no-zygote"]
-        )
+        browser = p.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
         page = browser.new_page()
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=60000)
-            page.wait_for_timeout(3000) 
             
-            soup = BeautifulSoup(page.content(), "html.parser")
-            links = soup.select('a[href*="/Job/"], a[href*="/job/"]')
+            # Print page info to logs
+            content = page.content()
+            print(f"DEBUG: Page HTML length: {len(content)}")
+            print(f"DEBUG: Page Preview: {content[:500]}")
+            
+            soup = BeautifulSoup(content, "html.parser")
+            
+            # Find ANY link that has 'job' in it
+            links = soup.find_all('a', href=re.compile(r'job', re.I))
+            print(f"DEBUG: Found {len(links)} links containing 'job' in the URL")
             
             for a in links:
-                title = a.get_text(strip=True)
-                if not title or not relevant_job(title): continue
-                link = a['href']
-                if not link.startswith("http"): link = "/".join(url.split('/')[:3]) + link
+                print(f"DEBUG: Found Link: {a.get_text(strip=True)} -> {a.get('href', 'no-href')}")
                 
-                job_id = re.search(r"\d+", link)
-                if job_id and job_id.group() not in seen_jobs:
-                    job_id_str = job_id.group()
-                    send_telegram(f"🚨 NEW NHS JOB\n\n🏥 {title}\n🔗 {link}")
-                    seen_jobs.add(job_id_str)
-                    with open(SEEN_FILE, "a") as f: f.write(job_id_str + "\n")
+        except Exception as e:
+            print(f"DEBUG Error on {url}: {e}")
         finally:
             browser.close()
+
 
 def main():
     print("HEARTBEAT: Script initialized...")
