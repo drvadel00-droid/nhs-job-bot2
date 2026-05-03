@@ -3,7 +3,7 @@ import random
 import re
 from datetime import datetime
 from playwright.async_api import async_playwright
-from playwright_stealth import stealth_async
+from playwright_stealth import stealth_page
 from fake_useragent import UserAgent
 
 # ================= CONFIG ================= #
@@ -183,7 +183,7 @@ async def check_site_stealth(url, seen_jobs, context):
     page = await context.new_page()
     
     # Apply stealth to the page
-    await stealth_async(page)
+    stealth_page(page)
     
 # Randomized delay before navigating (jitter)
     await asyncio.sleep(random.uniform(2, 5))
