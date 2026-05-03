@@ -1,8 +1,6 @@
 import asyncio
 import random
-           
 import re
-          
 from datetime import datetime
 from playwright.async_api import async_playwright
 from playwright_stealth import stealth_async
@@ -179,21 +177,6 @@ def fetch_real_title(url):
 
 # ================= SCRAPER ================= #
                               
-                           
-
-        
-                                    
-                                       
-
-                                        
-
-                                
-                                                                            
-                          
-
-                                        
-                                           
-                                            
 
 async def check_site_stealth(url, seen_jobs, context):
     log(f"Checking: {url}")
@@ -203,33 +186,34 @@ async def check_site_stealth(url, seen_jobs, context):
     await stealth_async(page)
     
 # Randomized delay before navigating (jitter)
-        await asyncio.sleep(random.uniform(2, 5))
+    await asyncio.sleep(random.uniform(2, 5))
         
         # Navigate and wait for the network to be quiet
-        response = await page.goto(url, wait_until="networkidle", timeout=60000)
-        
-        if not response or response.status == 403:
-            log(f"❌ Blocked (403) or no response from {url}. Skipping.")
-            await page.close()
-            return
+    response = await page.goto(url, wait_until="networkidle", timeout=60000)
+            
+    if not response or response.status == 403:
+        log(f"❌ Blocked (403) or no response from {url}. Skipping.")
+        await page.close()
+        return
 
-        log(f"Status code: {response.status}")
+    log(f"Status code: {response.status}")
 
         # Get the rendered HTML (after JS has executed)
-        content = await page.content()
-        soup = BeautifulSoup(content, "html.parser")
+    content = await page.content()
+    soup = BeautifulSoup(content, "html.parser")
         
-        # Find all anchor tags
-        links = soup.find_all("a", href=True)
-        log(f"Found {len(links)} total links")
+    # Find all anchor tags
+    links = soup.find_all("a", href=True)
+    log(f"Found {len(links)} total links")
 
         # Extract base URL for link normalization
-        base_match = re.match(r"(https?://[^/]+)", url)
-        base = base_match.group(1) if base_match else ""
+    base_match = re.match(r"(https?://[^/]+)", url)
+    base = base_match.group(1) if base_match else ""
 
-        new_jobs = 0
+    new_jobs = 0
 
-        for a in links:
+    for a in links:
+        try:
             raw_text = a.get_text(strip=True)
             # Use the normalize_link function you already have
             link = normalize_link(a["href"], base)
@@ -240,7 +224,6 @@ async def check_site_stealth(url, seen_jobs, context):
             # Target specific site patterns
             if "jobs.nhs.uk" in url and "/Job/" not in link:
                 continue
-
             if "healthjobsuk.com" in url and "job" not in link.lower():
                 continue
 
@@ -264,11 +247,11 @@ async def check_site_stealth(url, seen_jobs, context):
                 title = raw_text
 
             if not relevant_job(title):
-                continue
+                    continue
 
             job_id = extract_job_id(link)
             if job_id in seen_jobs:
-                continue
+                    continue
 
             message = f"🚨 NEW NHS JOB\n\n🏥 {title}\n🔗 {link}"
             log(f"NEW JOB: {title}")
@@ -278,28 +261,11 @@ async def check_site_stealth(url, seen_jobs, context):
             seen_jobs.add(job_id)
             new_jobs += 1
 
-        log(f"New jobs found: {new_jobs}")                                    
-
-                          
-                                  
-            
-                          
-
-                                            
-           
-                                   
-                           
-    
-                                       
-                                                                            
-                                                                    
-                                                        
-        
-    except Exception as e:
-        log(f"SCRAPER ERROR on {url}: {e}")
-    finally:
-        await page.close()
-
+            log(f"New jobs found: {new_jobs}")                                    
+        except Exception as e:
+            log(f"SCRAPER ERROR on {url}: {e}")
+        finally:
+            await page.close()
 
 async def main():
     log("🚀 NHS JOB BOT STARTED (STEALTH MODE)")
