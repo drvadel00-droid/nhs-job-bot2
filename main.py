@@ -1,15 +1,19 @@
-import requests
-from bs4 import BeautifulSoup
-import time
+import asyncio
+import random
+           
 import re
-import sys
+          
 from datetime import datetime
+from playwright.async_api import async_playwright
+from playwright_stealth import stealth_async
+from fake_useragent import UserAgent
 
 # ================= CONFIG ================= #
 BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"
 CHAT_ID = "-1003888963521"
-CHECK_INTERVAL = 120  # seconds
+CHECK_INTERVAL = 120  # seconds                                                          
 
+ua = UserAgent() 
 URLS = [
     # HealthJobsUK (newest first)
     "https://www.healthjobsuk.com/job_list?JobSearch_Submit=Search&_srt=publicationdate&_sd=desc",
@@ -174,55 +178,88 @@ def fetch_real_title(url):
     return None
 
 # ================= SCRAPER ================= #
-def check_site(url, seen_jobs):
+                              
+                           
+
+        
+                                    
+                                       
+
+                                        
+
+                                
+                                                                            
+                          
+
+                                        
+                                           
+                                            
+
+async def check_site_stealth(url, seen_jobs, context):
     log(f"Checking: {url}")
+    page = await context.new_page()
+    
+    # Apply stealth to the page
+    await stealth_async(page)
+    
+# Randomized delay before navigating (jitter)
+        await asyncio.sleep(random.uniform(2, 5))
+        
+        # Navigate and wait for the network to be quiet
+        response = await page.goto(url, wait_until="networkidle", timeout=60000)
+        
+        if not response or response.status == 403:
+            log(f"❌ Blocked (403) or no response from {url}. Skipping.")
+            await page.close()
+            return
 
-    try:
-        session = requests.Session()
-        session.headers.update(HEADERS)
+        log(f"Status code: {response.status}")
 
-        r = session.get(url, timeout=20)
-
-        if r.status_code == 403:
-            log("⚠️ 403 detected, trying with fresh session + delay...")
-            time.sleep(15)
-
-            session = requests.Session()
-            session.headers.update(HEADERS)
-            r = session.get(url, timeout=20)
-
-            if r.status_code == 403:
-                log("❌ Still blocked (403). Skipping this cycle.")
-                return
-
-        log(f"Status code: {r.status_code}")
-
-        soup = BeautifulSoup(r.text, "html.parser")
+        # Get the rendered HTML (after JS has executed)
+        content = await page.content()
+        soup = BeautifulSoup(content, "html.parser")
+        
+        # Find all anchor tags
         links = soup.find_all("a", href=True)
         log(f"Found {len(links)} total links")
 
-        base = re.match(r"(https?://[^/]+)", url).group(1)
+        # Extract base URL for link normalization
+        base_match = re.match(r"(https?://[^/]+)", url)
+        base = base_match.group(1) if base_match else ""
 
         new_jobs = 0
 
         for a in links:
             raw_text = a.get_text(strip=True)
+            # Use the normalize_link function you already have
             link = normalize_link(a["href"], base)
 
             if not raw_text or len(raw_text) < 5:
                 continue
 
+            # Target specific site patterns
             if "jobs.nhs.uk" in url and "/Job/" not in link:
                 continue
 
             if "healthjobsuk.com" in url and "job" not in link.lower():
                 continue
 
+            # Special handling for HealthJobsUK titles (as per your original code)
             if "healthjobsuk.com/job/" in link:
-                title = fetch_real_title(link)
-                if not title:
-                    title = raw_text
-                time.sleep(1)
+                # We stay on the current page context to avoid detection
+                # Open a temporary tab to get the title, or use raw_text if it fails
+                title = raw_text
+                try:
+                    temp_page = await context.new_page()
+                    await stealth_async(temp_page)
+                    await temp_page.goto(link, wait_until="domcontentloaded", timeout=15000)
+                    h1 = await temp_page.query_selector("h1")
+                    if h1:
+                        title = await h1.inner_text()
+                    await temp_page.close()
+                except:
+                    pass
+                await asyncio.sleep(random.uniform(1, 2))
             else:
                 title = raw_text
 
@@ -241,23 +278,52 @@ def check_site(url, seen_jobs):
             seen_jobs.add(job_id)
             new_jobs += 1
 
-        log(f"New jobs found: {new_jobs}")
+        log(f"New jobs found: {new_jobs}")                                    
 
+                          
+                                  
+            
+                          
+
+                                            
+           
+                                   
+                           
+    
+                                       
+                                                                            
+                                                                    
+                                                        
+        
     except Exception as e:
-        log(f"SCRAPER ERROR: {e}")
+        log(f"SCRAPER ERROR on {url}: {e}")
+    finally:
+        await page.close()
 
-# ================= MAIN ================= #
-def main():
-    log("🚀 NHS JOB BOT STARTED")
+
+async def main():
+    log("🚀 NHS JOB BOT STARTED (STEALTH MODE)")
     seen_jobs = load_seen()
+    
+    async with async_playwright() as p:
+        # Launching a visible browser (headless=False) is harder to detect, 
+        # but headless=True is fine if stealth is applied correctly.
+        browser = await p.chromium.launch(headless=True)
+        
+        # Create a browser context with a random User-Agent
+        context = await browser.new_context(
+            user_agent=ua.random,
+            viewport={'width': 1920, 'height': 1080}
+        )
 
-    while True:
-        for url in URLS:
-            check_site(url, seen_jobs)
-            time.sleep(3)
+        while True:
+            for url in URLS:
+                await check_site_stealth(url, seen_jobs, context)
+                # Small break between different site URLs
+                await asyncio.sleep(random.uniform(5, 10))
 
-        log(f"Sleeping {CHECK_INTERVAL} seconds...\n")
-        time.sleep(CHECK_INTERVAL)
+            log(f"Sleeping {CHECK_INTERVAL} seconds...\n")
+            await asyncio.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
