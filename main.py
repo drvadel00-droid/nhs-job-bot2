@@ -1,21 +1,20 @@
 import asyncio
 import random
 import re
-import time  # Added
-import requests  # Added
+import time
+import requests
 from datetime import datetime
-from bs4 import BeautifulSoup  # Added
+from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
-# import playwright_stealth
 from playwright_stealth import stealth_async
 from fake_useragent import UserAgent
 
 # ================= CONFIG ================= #
 BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"
 CHAT_ID = "-1003888963521"
-CHECK_INTERVAL = 120  # seconds                                                          
+CHECK_INTERVAL = 120  # seconds
 
-ua = UserAgent() 
+ua = UserAgent()
 URLS = [
     # HealthJobsUK (newest first)
     "https://www.healthjobsuk.com/job_list?JobSearch_Submit=Search&_srt=publicationdate&_sd=desc",
@@ -25,7 +24,7 @@ URLS = [
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=572&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=97667&_srt=startdate&_sd=a",
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=558&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=110250&_srt=startdate&_sd=a",
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=581&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=44291&_srt=startdate&_sd=a",
-    
+
     # NHS Jobs England
     "https://www.jobs.nhs.uk/candidate/search/results?keyword=doctor&sort=publicationDateDesc",
     "https://www.jobs.nhs.uk/candidate/search/results?searchFormType=sortBy&sort=publicationDateDesc&searchByLocationOnly=true&language=en#",
@@ -52,7 +51,7 @@ GRADE_KEYWORDS = [
     "st1", "st2", "st3",
     "registrar",
     "trust doctor", "trust grade",
-    "clinical fellow", "junior fellow", "junior clinical fellow", 
+    "clinical fellow", "junior fellow", "junior clinical fellow",
     "specialty doctor",
     "junior",
     "locum doctor"
@@ -64,7 +63,7 @@ EXCLUDE_KEYWORDS = [
     "manager", "director", "admin",
     "physiotherapist", "radiographer",
     "lead",
-    "scientist", "receptionist", "housekeeper", "cook", "clerk", 
+    "scientist", "receptionist", "housekeeper", "cook", "clerk",
     "practitioner",
     "nutritionist",
     "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker"
@@ -180,28 +179,19 @@ def fetch_real_title(url):
     return None
 
 # ================= SCRAPER ================= #
-                              
 
 async def check_site_stealth(url, seen_jobs, context):
     log(f"Checking: {url}")
     page = await context.new_page()
-    
-    # You MUST await the stealth initialization
-    await stealth_async(page)
-    # Use stealth_sync (it works for async pages too)
-    # This is more compatible with different versions of the library
+
     try:
-        await page.goto(url, wait_until="networkidle")
-        playwright_stealth.stealth_sync(page)
-    except AttributeError:
-        # Fallback for older versions
-        await playwright_stealth.stealth_async(page)
-    
-    await asyncio.sleep(random.uniform(2, 5))
-    
-    try:
+        # Apply stealth to avoid bot detection — called once, correctly
+        await stealth_async(page)
+
+        await asyncio.sleep(random.uniform(2, 5))
+
         response = await page.goto(url, wait_until="networkidle", timeout=60000)
-        
+
         if not response or response.status == 403:
             log(f"❌ Blocked (403) or no response from {url}. Skipping.")
             return
@@ -210,7 +200,7 @@ async def check_site_stealth(url, seen_jobs, context):
         content = await page.content()
         soup = BeautifulSoup(content, "html.parser")
         links = soup.find_all("a", href=True)
-        
+
         base_match = re.match(r"(https?://[^/]+)", url)
         base = base_match.group(1) if base_match else ""
 
@@ -233,15 +223,14 @@ async def check_site_stealth(url, seen_jobs, context):
                     title = raw_text
                     try:
                         temp_page = await context.new_page()
-                        # Fixed the call here as well
-                        playwright_stealth.stealth_sync(temp_page) 
+                        await stealth_async(temp_page)
                         await temp_page.goto(link, wait_until="domcontentloaded", timeout=15000)
                         h1 = await temp_page.query_selector("h1")
                         if h1:
                             title = await h1.inner_text()
                         await temp_page.close()
-                    except:
-                        pass
+                    except Exception as e:
+                        log(f"Error fetching job detail page: {e}")
                     await asyncio.sleep(random.uniform(1, 2))
                 else:
                     title = raw_text
@@ -260,7 +249,7 @@ async def check_site_stealth(url, seen_jobs, context):
                 save_seen(job_id)
                 seen_jobs.add(job_id)
                 new_jobs += 1
-                                    
+
             except Exception as e:
                 log(f"Error processing link: {e}")
 
@@ -271,29 +260,55 @@ async def check_site_stealth(url, seen_jobs, context):
     finally:
         await page.close()
 
+
+async def create_browser_context(playwright):
+    """Launch a fresh browser and context."""
+    browser = await playwright.chromium.launch(
+        headless=True,
+        args=[
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--disable-setuid-sandbox",
+            "--single-process",
+        ]
+    )
+    context = await browser.new_context(
+        user_agent=ua.random,
+        viewport={"width": 1920, "height": 1080}
+    )
+    return browser, context
+
+
 async def main():
     log("🚀 NHS JOB BOT STARTED (STEALTH MODE)")
     seen_jobs = load_seen()
-    
+
     async with async_playwright() as p:
-        # Launching a visible browser (headless=False) is harder to detect, 
-        # but headless=True is fine if stealth is applied correctly.
-        browser = await p.chromium.launch(headless=True)
-        
-        # Create a browser context with a random User-Agent
-        context = await browser.new_context(
-            user_agent=ua.random,
-            viewport={'width': 1920, 'height': 1080}
-        )
+        browser, context = await create_browser_context(p)
 
         while True:
             for url in URLS:
-                await check_site_stealth(url, seen_jobs, context)
-                # Small break between different site URLs
+                try:
+                    await check_site_stealth(url, seen_jobs, context)
+                except Exception as e:
+                    log(f"⚠️ Unhandled error on {url}: {e}. Recreating browser context...")
+                    # If the context/browser has gone bad, recreate it cleanly
+                    try:
+                        await context.close()
+                    except:
+                        pass
+                    try:
+                        await browser.close()
+                    except:
+                        pass
+                    browser, context = await create_browser_context(p)
+
                 await asyncio.sleep(random.uniform(5, 10))
 
             log(f"Sleeping {CHECK_INTERVAL} seconds...\n")
             await asyncio.sleep(CHECK_INTERVAL)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
