@@ -13,6 +13,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Install the browser during the build
 RUN playwright install chromium
+RUN pip uninstall playwright-stealth -y
+RUN pip install playwright-stealth==1.0.6
 
 COPY . .
 
