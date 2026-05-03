@@ -1,7 +1,10 @@
 import asyncio
 import random
 import re
+import time  # Added
+import requests  # Added
 from datetime import datetime
+from bs4 import BeautifulSoup  # Added
 from playwright.async_api import async_playwright
 import playwright_stealth
 from fake_useragent import UserAgent
@@ -181,90 +184,88 @@ def fetch_real_title(url):
 async def check_site_stealth(url, seen_jobs, context):
     log(f"Checking: {url}")
     page = await context.new_page()    
-    # Apply stealth to the page
-    await playwright_stealth.stealth_async(page)
     
-# Randomized delay before navigating (jitter)
+    # Use stealth_sync (it works for async pages too)
+    # This is more compatible with different versions of the library
+    try:
+        playwright_stealth.stealth_sync(page)
+    except AttributeError:
+        # Fallback for older versions
+        await playwright_stealth.stealth_async(page)
+    
     await asyncio.sleep(random.uniform(2, 5))
+    
+    try:
+        response = await page.goto(url, wait_until="networkidle", timeout=60000)
         
-        # Navigate and wait for the network to be quiet
-    response = await page.goto(url, wait_until="networkidle", timeout=60000)
-            
-    if not response or response.status == 403:
-        log(f"❌ Blocked (403) or no response from {url}. Skipping.")
+        if not response or response.status == 403:
+            log(f"❌ Blocked (403) or no response from {url}. Skipping.")
+            return
+
+        log(f"Status code: {response.status}")
+        content = await page.content()
+        soup = BeautifulSoup(content, "html.parser")
+        links = soup.find_all("a", href=True)
+        
+        base_match = re.match(r"(https?://[^/]+)", url)
+        base = base_match.group(1) if base_match else ""
+
+        new_jobs = 0
+
+        for a in links:
+            try:
+                raw_text = a.get_text(strip=True)
+                link = normalize_link(a["href"], base)
+
+                if not raw_text or len(raw_text) < 5:
+                    continue
+
+                if "jobs.nhs.uk" in url and "/Job/" not in link:
+                    continue
+                if "healthjobsuk.com" in url and "job" not in link.lower():
+                    continue
+
+                if "healthjobsuk.com/job/" in link:
+                    title = raw_text
+                    try:
+                        temp_page = await context.new_page()
+                        # Fixed the call here as well
+                        playwright_stealth.stealth_sync(temp_page) 
+                        await temp_page.goto(link, wait_until="domcontentloaded", timeout=15000)
+                        h1 = await temp_page.query_selector("h1")
+                        if h1:
+                            title = await h1.inner_text()
+                        await temp_page.close()
+                    except:
+                        pass
+                    await asyncio.sleep(random.uniform(1, 2))
+                else:
+                    title = raw_text
+
+                if not relevant_job(title):
+                    continue
+
+                job_id = extract_job_id(link)
+                if job_id in seen_jobs:
+                    continue
+
+                message = f"🚨 NEW NHS JOB\n\n🏥 {title}\n🔗 {link}"
+                log(f"NEW JOB: {title}")
+                send_telegram(message)
+
+                save_seen(job_id)
+                seen_jobs.add(job_id)
+                new_jobs += 1
+                                    
+            except Exception as e:
+                log(f"Error processing link: {e}")
+
+        log(f"Found {new_jobs} new jobs on this site.")
+
+    except Exception as e:
+        log(f"SCRAPER ERROR on {url}: {e}")
+    finally:
         await page.close()
-        return
-
-    log(f"Status code: {response.status}")
-
-        # Get the rendered HTML (after JS has executed)
-    content = await page.content()
-    soup = BeautifulSoup(content, "html.parser")
-        
-    # Find all anchor tags
-    links = soup.find_all("a", href=True)
-    log(f"Found {len(links)} total links")
-
-        # Extract base URL for link normalization
-    base_match = re.match(r"(https?://[^/]+)", url)
-    base = base_match.group(1) if base_match else ""
-
-    new_jobs = 0
-
-    for a in links:
-        try:
-            raw_text = a.get_text(strip=True)
-            # Use the normalize_link function you already have
-            link = normalize_link(a["href"], base)
-
-            if not raw_text or len(raw_text) < 5:
-                continue
-
-            # Target specific site patterns
-            if "jobs.nhs.uk" in url and "/Job/" not in link:
-                continue
-            if "healthjobsuk.com" in url and "job" not in link.lower():
-                continue
-
-            # Special handling for HealthJobsUK titles (as per your original code)
-            if "healthjobsuk.com/job/" in link:
-                # We stay on the current page context to avoid detection
-                # Open a temporary tab to get the title, or use raw_text if it fails
-                title = raw_text
-                try:
-                    temp_page = await context.new_page()
-                    await stealth_async(temp_page)
-                    await temp_page.goto(link, wait_until="domcontentloaded", timeout=15000)
-                    h1 = await temp_page.query_selector("h1")
-                    if h1:
-                        title = await h1.inner_text()
-                    await temp_page.close()
-                except:
-                    pass
-                await asyncio.sleep(random.uniform(1, 2))
-            else:
-                title = raw_text
-
-            if not relevant_job(title):
-                    continue
-
-            job_id = extract_job_id(link)
-            if job_id in seen_jobs:
-                    continue
-
-            message = f"🚨 NEW NHS JOB\n\n🏥 {title}\n🔗 {link}"
-            log(f"NEW JOB: {title}")
-            send_telegram(message)
-
-            save_seen(job_id)
-            seen_jobs.add(job_id)
-            new_jobs += 1
-
-            log(f"New jobs found: {new_jobs}")                                    
-        except Exception as e:
-            log(f"SCRAPER ERROR on {url}: {e}")
-        finally:
-            await page.close()
 
 async def main():
     log("🚀 NHS JOB BOT STARTED (STEALTH MODE)")
