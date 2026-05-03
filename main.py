@@ -6,7 +6,8 @@ import requests  # Added
 from datetime import datetime
 from bs4 import BeautifulSoup  # Added
 from playwright.async_api import async_playwright
-import playwright_stealth
+# import playwright_stealth
+from playwright_stealth import stealth_async
 from fake_useragent import UserAgent
 
 # ================= CONFIG ================= #
@@ -183,11 +184,14 @@ def fetch_real_title(url):
 
 async def check_site_stealth(url, seen_jobs, context):
     log(f"Checking: {url}")
-    page = await context.new_page()    
+    page = await context.new_page()
     
+    # You MUST await the stealth initialization
+    await stealth_async(page)
     # Use stealth_sync (it works for async pages too)
     # This is more compatible with different versions of the library
     try:
+        await page.goto(url, wait_until="networkidle")
         playwright_stealth.stealth_sync(page)
     except AttributeError:
         # Fallback for older versions
