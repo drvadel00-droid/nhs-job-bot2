@@ -35,7 +35,7 @@ URLS = [
     # # HSCNI (Northern Ireland)
     # "https://jobs.hscni.net/Search?SearchCatID=0",
     # Scotland
-    "https://apply.jobs.scot.nhs.uk/Home/Job",
+    "https://apply.jobs.scot.nhs.uk/Home/Job"
 ]
 
 # ================= FILTERS ================= #
