@@ -32,9 +32,10 @@ URLS = [
     # NHS Jobs England
     "https://www.jobs.nhs.uk/candidate/search/results?keyword=doctor&sort=publicationDateDesc",
     "https://www.jobs.nhs.uk/candidate/search/results?searchFormType=sortBy&sort=publicationDateDesc&searchByLocationOnly=true&language=en",
+    "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&language=en#"
     # HSCNI (Northern Ireland)
     # "https://jobs.hscni.net/Search?SearchCatID=0",
-    # Scotland
+    # # Scotland
     # "https://apply.jobs.scot.nhs.uk/Home/Job",
 ]
 
