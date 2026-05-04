@@ -35,7 +35,7 @@ URLS = [
     # HSCNI (Northern Ireland)
     # "https://jobs.hscni.net/Search?SearchCatID=0",
     # Scotland
-    # "https://apply.jobs.scot.nhs.uk/Home/Job",
+    "https://apply.jobs.scot.nhs.uk/Home/Job",
 ]
 
 # ================= FILTERS ================= #
@@ -232,23 +232,33 @@ def parse_healthjobsuk(soup: BeautifulSoup, base: str) -> list[dict]:
 
 
 def parse_nhsjobs(soup: BeautifulSoup, base: str) -> list[dict]:
-    """Return list of {title, link} for jobs.nhs.uk."""
+    """Return list of {title, link} for jobs.nhs.uk.
+
+    Job detail links follow the pattern /candidate/jobadvert/<id>
+    e.g. https://www.jobs.nhs.uk/candidate/jobadvert/E0136-25-0072
+    """
+    seen_ids: set = set()
     jobs = []
-    # Job cards have <a> with href matching /candidate/jobadvert/
-    for a in soup.select("a[href*='/Job/']"):
+                                                                 
+    for a in soup.select("a[href*='/candidate/jobadvert/']"):
         href = normalize_link(a["href"], base)
+        # Strip query params to get a stable ID
+        uid = href.split("?")[0].rstrip("/").split("/")[-1]
+        if uid in seen_ids:
+            continue
+        seen_ids.add(uid)
         text = a.get_text(strip=True)
         if text and len(text) > 5:
             jobs.append({"title": text, "link": href, "needs_detail": False})
-    # Fallback: any anchor whose text looks like a job title
-    if not jobs:
-        for a in soup.find_all("a", href=True):
-            if "/Job/" in a["href"] or "/job/" in a["href"]:
-                text = a.get_text(strip=True)
-                if text and len(text) > 5:
-                    jobs.append({"title": text,
-                                 "link": normalize_link(a["href"], base),
-                                 "needs_detail": False})
+                                                            
+                
+                                               
+                                                            
+                                             
+                                          
+                                               
+                                                                         
+                                                        
     return jobs
 
 
