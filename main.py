@@ -20,20 +20,20 @@ DETAIL_TIMEOUT = 25_000       # ms for job-detail pages
 ua = UserAgent()
 
 URLS = [
-    # HealthJobsUK — newest first (general + per-trust)
-    # "https://www.healthjobsuk.com/job_list?JobSearch_Submit=Search&_srt=publicationdate&_sd=desc",
-    # "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=534&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=64082&_srt=publicationdate&_sd=desc",
-    # "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=737&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=81534&_srt=publicationdate&_sd=desc",
-    # "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=594&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=88730&_srt=publicationdate&_sd=desc",
-    # "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=572&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=97667&_srt=publicationdate&_sd=desc",
-    # "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=558&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=110250&_srt=publicationdate&_sd=desc",
-    # "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=581&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=44291&_srt=publicationdate&_sd=desc",
-    # # NHS Jobs England — medical & dental staff group, junior pay bands
-    # "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
-    # # HSCNI (Northern Ireland)
-    # "https://jobs.hscni.net/Search?SearchCatID=0",
-    # # Scotland
-    # "https://apply.jobs.scot.nhs.uk/Home/Job",
+    HealthJobsUK — newest first (general + per-trust)
+    "https://www.healthjobsuk.com/job_list?JobSearch_Submit=Search&_srt=publicationdate&_sd=desc",
+    "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=534&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=64082&_srt=publicationdate&_sd=desc",
+    "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=737&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=81534&_srt=publicationdate&_sd=desc",
+    "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=594&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=88730&_srt=publicationdate&_sd=desc",
+    "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=572&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=97667&_srt=publicationdate&_sd=desc",
+    "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=558&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=110250&_srt=publicationdate&_sd=desc",
+    "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=581&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=44291&_srt=publicationdate&_sd=desc",
+    # NHS Jobs England — medical & dental staff group, junior pay bands
+    "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
+    # HSCNI (Northern Ireland)
+    "https://jobs.hscni.net/Search?SearchCatID=0",
+    # Scotland
+    "https://apply.jobs.scot.nhs.uk/Home/Job",
 ]
 
 # ================= FILTERS ================= #
@@ -200,140 +200,152 @@ _GRADE_TOKENS = [
     "Specialty Doctor", "Junior", "Locum Doctor", "Foundation",
 ]
 
+# ================= UPDATED DETAIL-PAGE PARSER ================= #
+
 def _split_healthjobsuk_h1(raw: str) -> dict:
     """
-    HealthJobsUK concatenates everything into one block of text, e.g.:
-      "Medical Education Fellow in General Medicine (ST3)ST3
-       Harrogate and District NHS Foundation Trust, Harrogate
-       Speciality: General Medicine  Salary: £65,048 - £73,992 per annum"
+    Improved parser for HealthJobsUK blobs.
+    Handles lack of spaces: "Trust,Huddersfield & CalderdaleSpeciality:Emergency Medicine"
+                                                             
+                                                                           
 
-    Parse it into clean title / grade / location / salary fields.
+                                                                 
     """
     result = {"title": None, "location": None, "salary": None, "grade": None}
 
-    # --- Salary ---
-    sal_m = re.search(r"Salary\s*:?\s*(£[\d,]+\s*[-–to]+\s*£[\d,]+(?:\s*per\s+annum)?)", raw, re.I)
+    # 1. Extract Salary (Handles: Salary:£XXX - £YYY per annum)
+    sal_m = re.search(r"Salary\s*:?\s*(£[\d,]+\s*[-–to]+\s*£[\d,]+(?:\s*per\s+(?:annum|year|month|hour))?)", raw, re.I)
     if sal_m:
         result["salary"] = sal_m.group(1).strip()
 
-    # --- Grade: prefer parenthesised form first, then bare token ---
-    grade_paren = re.search(
-        r"\((" + "|".join(re.escape(g) for g in _GRADE_TOKENS) + r")\)",
-        raw, re.I
-    )
-    grade_bare = re.search(
-        r"\b(" + "|".join(re.escape(g) for g in _GRADE_TOKENS) + r")\b",
-        raw, re.I
-    )
-    if grade_paren:
-        result["grade"] = grade_paren.group(1)
-    elif grade_bare:
-        result["grade"] = grade_bare.group(1)
-
-    # --- Location: city that follows "NHS ... Trust," or "Hospital," ---
-    loc_m = re.search(
-        r"(?:NHS[^,\n]+?(?:Trust|Hospital)|Foundation Trust)[,\s]+([A-Z][A-Za-z\s\-]+?)(?=\s*(?:Specialit|Salary|$))",
-        raw, re.I
-    )
-    if loc_m:
-        result["location"] = loc_m.group(1).strip().rstrip(",")
-
-    # --- Title: everything before the first grade token / trust / salary marker ---
-    cutoff = len(raw)
-    for pattern in [
-        r"\s*\([A-Z]{2}\d\)",                         # (ST3) grade in parens
-        r"\b(?:NHS|Foundation Trust|Hospital Trust)\b",
-        r"\bSpecialit(?:y|ies)\b",
-        r"\bSalary\b",
-    ]:
+    # 2. Extract Grade (Matches keywords or (ST3) style)
+    grade_patterns = [
+        r"\((" + "|".join(re.escape(g) for g in _GRADE_TOKENS) + r")\)", # (ST3)
+                 
+     
+                           
+        r"\b(" + "|".join(re.escape(g) for g in _GRADE_TOKENS) + r")\b"  # Specialty Doctor
+    ]
+    for pattern in grade_patterns:
         m = re.search(pattern, raw, re.I)
-        if m and m.start() < cutoff:
-            cutoff = m.start()
+        if m:
+                    
+            result["grade"] = m.group(1)
+            break
 
-    raw_title = raw[:cutoff].strip().rstrip(",").strip()
-    # Remove trailing bare grade token if still present
-    for g in _GRADE_TOKENS:
-        raw_title = re.sub(r"\s*\b" + re.escape(g) + r"\b\s*$", "", raw_title, flags=re.I).strip()
-    result["title"] = raw_title or None
+    # 3. Extract Location
+    # Finds text between 'Trust,' or 'Hospital,' and the next marker (Speciality/Salary)
+    loc_m = re.search(r"(?:Trust|Hospital|Board)[,\s]+(.*?)(?=Specialit|Salary|$)", raw, re.I)
+                 
+     
+    if loc_m:
+        loc_candidate = loc_m.group(1).strip().rstrip(",")
+        # Clean up if it grabbed too much
+        result["location"] = loc_candidate.split("Speciality")[0].strip()
+
+    # 4. Extract Clean Title
+    # The title is usually at the very beginning before 'NHS' or a Grade token
+                    
+                                                                             
+    cutoff_match = re.search(r"\b(?:NHS|Foundation|Hospital|Trust|Board|ST\d|FY\d|CT\d)\b", raw)
+    if cutoff_match:
+        raw_title = raw[:cutoff_match.start()].strip().rstrip(",").strip()
+        result["title"] = raw_title if len(raw_title) > 5 else None
+                                         
+                                    
+                              
+
+                                                        
+                                                       
+                           
+                                                                                                  
+                                       
 
     return result
 
 
 def parse_detail_soup(soup: BeautifulSoup) -> dict:
-    """
-    Extract title, location, salary and grade from a job detail page.
+       
+                                                                     
 
-    For HealthJobsUK the <h1> contains everything concatenated — detected by
-    the presence of 'Salary' or 'NHS' inside the h1 text and handled by
-    _split_healthjobsuk_h1().
+                                                                              
+                                                                       
+                             
 
-    For all other sites four generic strategies are tried:
-      1. <dl> / <dt> + <dd> pairs
-      2. <table> <th>/<td> rows
-      3. <li> with bold/strong label
-      4. <p>/<div>/<span> with "label: value" text
-    """
+                                                          
+                                 
+                               
+                                    
+                                                  
+       
     result = {"title": None, "location": None, "salary": None, "grade": None}
 
+    # Get the main heading
     h1 = soup.find("h1")
     raw_h1 = _scrub(h1.get_text()) if h1 else ""
 
-    # Detect concatenated HealthJobsUK h1 (contains embedded Salary: or NHS Trust)
-    if raw_h1 and (re.search(r"Salary\s*:", raw_h1, re.I) or
-                   re.search(r"\bNHS\b|\bFoundation Trust\b", raw_h1, re.I)):
+    # --- SPECIAL CASE: HealthJobsUK Concatenated Blob ---
+    if raw_h1 and (re.search(r"Salary\s*:", raw_h1, re.I) or "Trust" in raw_h1):
+                                                                             
         parsed = _split_healthjobsuk_h1(raw_h1)
         result.update({k: v for k, v in parsed.items() if v})
-    else:
+    
+    if not result["title"]:
         result["title"] = raw_h1 or None
 
-    def try_fill(label_raw: str, value_raw: str):
-        label = label_raw.strip().rstrip(":").strip()
-        value = _scrub(value_raw)
-        if not value:
-            return
-        if result["location"] is None and _match_label(label, _LOCATION_LABELS):
-            result["location"] = value
-        if result["salary"] is None and _match_label(label, _SALARY_LABELS):
-            result["salary"] = value
-        if result["grade"] is None and _match_label(label, _GRADE_LABELS):
-            result["grade"] = value
+    # --- STRATEGY: NHS Design System (Summary Lists) ---
+    # New NHS Jobs uses .nhsuk-summary-list
+    for dl in soup.select(".nhsuk-summary-list, .v-summary-list, dl"):
+        for row in dl.select(".nhsuk-summary-list__row, div"):
+            dt = row.find(["dt", "span"], class_=re.compile(r"key|label"))
+            dd = row.find(["dd", "span"], class_=re.compile(r"value|item"))
+                                      
+                                                                            
+                                    
+            if dt and dd:
+                try_fill_logic(dt.get_text(), dd.get_text(), result)
 
-    # Strategy 1: <dl> <dt>/<dd> pairs
-    for dl in soup.find_all("dl"):
-        for dt, dd in zip(dl.find_all("dt"), dl.find_all("dd")):
+    # --- STRATEGY: Standard Tables ---
+                                  
+                                                                
                                
                                     
-            try_fill(dt.get_text(), dd.get_text())
+                                                  
 
-    # Strategy 2: <table> rows
+                              
     for table in soup.find_all("table"):
         for row in table.find_all("tr"):
             cells = row.find_all(["th", "td"])
             if len(cells) >= 2:
-                try_fill(cells[0].get_text(), cells[1].get_text())
-
-    # Strategy 3: <li> with bold/strong label
-    for li in soup.find_all("li"):
-        strong = li.find(["strong", "b"])
-        if strong:
-                                     
-            try_fill(strong.get_text(), li.get_text().replace(strong.get_text(), "", 1))
-                                  
-
-    # Strategy 4: "label: value" in block elements
-    for tag in soup.find_all(["p", "div", "span"]):
-        # Only consider shallow elements (no nested block tags) to avoid huge blobs
-        if tag.find(["p", "div", "table", "ul"]):
-            continue
-        text = tag.get_text()
-                                     
-        if ":" in text:
-            parts = text.split(":", 1)
-            if len(parts[0].split()) <= 4:   # label should be short
-                try_fill(parts[0], parts[1])
-                         
+                try_fill_logic(cells[0].get_text(), cells[1].get_text(), result)
 
     return result
+                                  
+                                         
+                  
+                                     
+                                                                                        
+                                  
+
+def try_fill_logic(label_raw: str, value_raw: str, result_dict: dict):
+    """Helper to map scraped labels to our data fields."""
+    label = label_raw.strip().lower()
+    value = _scrub(value_raw)
+    if not value or value.lower() == "n/a":
+        return
+                                     
+                       
+                                      
+                                                                    
+                                            
+                         
+
+    if result_dict["location"] is None and any(l in label for l in _LOCATION_LABELS):
+        result_dict["location"] = value
+    elif result_dict["salary"] is None and any(l in label for l in _SALARY_LABELS):
+        result_dict["salary"] = value
+    elif result_dict["grade"] is None and any(l in label for l in _GRADE_LABELS):
+        result_dict["grade"] = value
 
 # ================= BROWSER FACTORY ================= #
 async def create_context(playwright):
