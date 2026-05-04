@@ -29,16 +29,13 @@ URLS = [
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=572&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=97667&_srt=startdate&_sd=a",
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=558&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=110250&_srt=startdate&_sd=a",
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=581&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=44291&_srt=startdate&_sd=a",
-    
     # NHS Jobs England
     "https://www.jobs.nhs.uk/candidate/search/results?keyword=doctor&sort=publicationDateDesc",
     "https://www.jobs.nhs.uk/candidate/search/results?searchFormType=sortBy&sort=publicationDateDesc&searchByLocationOnly=true&language=en",
-
     # HSCNI (Northern Ireland)
     "https://jobs.hscni.net/Search?SearchCatID=0",
-
     # Scotland
-    "https://apply.jobs.scot.nhs.uk/Home/Search",
+    "https://apply.jobs.scot.nhs.uk/Home/Job",
 ]
 
 # ================= FILTERS ================= #
@@ -67,10 +64,8 @@ EXCLUDE_KEYWORDS = [
     "nurse", "midwife", "assistant",
     "manager", "director", "admin",
     "physiotherapist", "radiographer",
-           
     "lead", "scientist", "receptionist", "housekeeper",
     "cook", "clerk", "practitioner", "nutritionist",
-                   
     "nutrition", "coordinator", "therapist", "secretary",
     "pharmacist", "matron", "worker",
 ]
@@ -87,14 +82,6 @@ VIEWPORTS = [
 # ================= LOGGING ================= #
 def log(message: str):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}", flush=True)
-
-                                               
-           
-                                                                                                                                    
-                                                                                           
-                                        
-                              
- 
 
 # ================= SEEN-JOBS PERSISTENCE ================= #
 def load_seen() -> set:
@@ -116,24 +103,17 @@ def send_telegram(message: str):
     for attempt in range(5):
         try:
             r = requests.post(url, data=payload, timeout=10)
-
             if r.status_code == 200:
                 log(f"✅ Telegram sent (attempt {attempt + 1})")
                 return
-
             elif r.status_code == 429:
-                               
-                    
                 retry_after = r.json().get("parameters", {}).get("retry_after", backoff)
-                       
-                        
                 log(f"⚠️  Telegram rate-limited. Sleeping {retry_after}s")
                 time.sleep(retry_after)
                 backoff *= 2
             else:
                 log(f"❌ Telegram error {r.status_code}: {r.text[:200]}")
                 return
-
         except Exception as e:
             log(f"❌ Telegram exception: {e}")
             time.sleep(backoff)
@@ -142,16 +122,12 @@ def send_telegram(message: str):
 # ================= FILTER LOGIC ================= #
 def relevant_job(title: str) -> bool:
     t = title.lower()
-
     if any(ex in t for ex in EXCLUDE_KEYWORDS):
         return False
-
     if not any(sp in t for sp in MEDICAL_SPECIALTIES):
         return False
-
     if not any(gr in t for gr in GRADE_KEYWORDS):
         return False
-
     return True
 
 def extract_job_id(link: str) -> str:
@@ -242,8 +218,6 @@ async def create_context(playwright):
     return browser, context
 
 # ================= SITE-SPECIFIC PARSERS ================= #
-                                           
-                                            
 
 def parse_healthjobsuk(soup: BeautifulSoup, base: str) -> list[dict]:
     """Return list of {title, link} for HealthJobsUK listing pages."""
@@ -256,8 +230,6 @@ def parse_healthjobsuk(soup: BeautifulSoup, base: str) -> list[dict]:
             jobs.append({"title": text, "link": href, "needs_detail": True})
     return jobs
 
-                                
-                       
 
 def parse_nhsjobs(soup: BeautifulSoup, base: str) -> list[dict]:
     """Return list of {title, link} for jobs.nhs.uk."""
@@ -279,8 +251,6 @@ def parse_nhsjobs(soup: BeautifulSoup, base: str) -> list[dict]:
                                  "needs_detail": False})
     return jobs
 
-                          
-                                              
 
 def parse_hscni(soup: BeautifulSoup, base: str) -> list[dict]:
     """Return list of {title, link} for jobs.hscni.net."""
@@ -292,14 +262,14 @@ def parse_hscni(soup: BeautifulSoup, base: str) -> list[dict]:
             jobs.append({"title": text, "link": href, "needs_detail": False})
     return jobs
 
-                                               
 
 def parse_scotland(soup: BeautifulSoup, base: str) -> list[dict]:
     """Return list of {title, link} for apply.jobs.scot.nhs.uk."""
     jobs = []
     for a in soup.find_all("a", href=True):
         href = a["href"]
-        if "Vacancy" in href or "vacancy" in href or "Job" in href:
+        # Job links use ?JobId=XXXXXX
+        if "JobId=" in href or "JobDetail" in href:
             full = normalize_link(href, base)
             text = a.get_text(strip=True)
             if text and len(text) > 5:
@@ -362,7 +332,6 @@ async def fetch_detail_title(context, link: str) -> str | None:
     """Open a job detail page and return the <h1> title, or None on failure."""
     page = await context.new_page()
     try:
-                                                                         
         await stealth_async(page)
         await asyncio.sleep(random.uniform(1.5, 3.5))
         ok = await goto_with_retry(page, link, retries=2, timeout=DETAIL_TIMEOUT)
@@ -405,23 +374,12 @@ async def check_site(url: str, seen_jobs: set, context) -> int:
         soup = BeautifulSoup(content, "html.parser")
         candidates = parser(soup, base)
 
-                                                       
-                                                        
-
         log(f"   Found {len(candidates)} candidate links.")
 
         for job in candidates:
             try:
                 title = job["title"]
                 link = job["link"]
-
-                                                     
-                            
-
-                                                                
-                            
-                                                                           
-                            
 
                 # For HealthJobsUK the listing title is often truncated —
                 # fetch the detail page to get the canonical <h1>.
@@ -432,12 +390,7 @@ async def check_site(url: str, seen_jobs: set, context) -> int:
                     detail_title = await fetch_detail_title(context, link)
                     if detail_title:
                         title = detail_title
-                                               
-                                          
-                                                                   
                     await asyncio.sleep(random.uniform(1, 2.5))
-                     
-                                    
 
                 if not relevant_job(title):
                     continue
@@ -453,7 +406,6 @@ async def check_site(url: str, seen_jobs: set, context) -> int:
                 )
                 log(f"   🆕 NEW JOB: {title}")
                 send_telegram(message)
-
                 save_seen(job_id)
                 seen_jobs.add(job_id)
                 new_jobs += 1
@@ -471,24 +423,7 @@ async def check_site(url: str, seen_jobs: set, context) -> int:
     finally:
         await page.close()
 
-
     return new_jobs
-                                             
-                                               
-                      
-              
-                           
-                                      
-                            
-                                       
-                               
-         
-     
-                                        
-                             
-                                                
-     
-                           
 
 
 # ================= ENTRY POINT ================= #
@@ -506,8 +441,6 @@ async def main():
                 # Rotate context every N URLs to avoid fingerprint accumulation
                 if urls_checked > 0 and urls_checked % CONTEXT_ROTATE_EVERY == 0:
                     log("🔄 Rotating browser context...")
-                                                                                               
-                                                                              
                     try:
                         await context.close()
                         await browser.close()
