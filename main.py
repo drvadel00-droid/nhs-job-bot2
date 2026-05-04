@@ -35,7 +35,7 @@ URLS = [
     # HSCNI (Northern Ireland)
     # "https://jobs.hscni.net/Search?SearchCatID=0",
     # Scotland
-    "https://apply.jobs.scot.nhs.uk/Home/Job",
+    # "https://apply.jobs.scot.nhs.uk/Home/Job",
 ]
 
 # ================= FILTERS ================= #
@@ -239,7 +239,6 @@ def parse_nhsjobs(soup: BeautifulSoup, base: str) -> list[dict]:
     """
     seen_ids: set = set()
     jobs = []
-                                                                 
     for a in soup.select("a[href*='/candidate/jobadvert/']"):
         href = normalize_link(a["href"], base)
         # Strip query params to get a stable ID
@@ -250,15 +249,6 @@ def parse_nhsjobs(soup: BeautifulSoup, base: str) -> list[dict]:
         text = a.get_text(strip=True)
         if text and len(text) > 5:
             jobs.append({"title": text, "link": href, "needs_detail": False})
-                                                            
-                
-                                               
-                                                            
-                                             
-                                          
-                                               
-                                                                         
-                                                        
     return jobs
 
 
@@ -397,6 +387,8 @@ async def check_site(url: str, seen_jobs: set, context) -> int:
         candidates = parser(soup, base)
 
         log(f"   Found {len(candidates)} candidate links.")
+        for i, job in enumerate(candidates):
+            log(f"   [{i+1}] {job['title']!r} → {job['link']}")
 
         for job in candidates:
             try:
@@ -409,7 +401,7 @@ async def check_site(url: str, seen_jobs: set, context) -> int:
                     if job_id in seen_jobs:
                         continue
                     detail_title = await fetch_detail_title(context, link)
-                    log(f"   Scotland detail title: {detail_title!r}")
+                                                                      
                     if detail_title:
                         title = detail_title
                     await asyncio.sleep(random.uniform(1, 2.5))
