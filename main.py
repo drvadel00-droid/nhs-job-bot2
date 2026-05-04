@@ -264,16 +264,28 @@ def parse_hscni(soup: BeautifulSoup, base: str) -> list[dict]:
 
 
 def parse_scotland(soup: BeautifulSoup, base: str) -> list[dict]:
-    """Return list of {title, link} for apply.jobs.scot.nhs.uk."""
+    """Return list of {title, link} for apply.jobs.scot.nhs.uk.
+
+    The listing page link text is often generic ("View", "Apply", etc.)
+    so we always fetch the detail page to get the real <h1> job title.
+    Duplicates by JobId are de-duped before any detail fetch is attempted.
+    """
+    seen_ids: set = set()
     jobs = []
     for a in soup.find_all("a", href=True):
         href = a["href"]
-        # Job links use ?JobId=XXXXXX
-        if "JobId=" in href or "JobDetail" in href:
-            full = normalize_link(href, base)
-            text = a.get_text(strip=True)
-            if text and len(text) > 5:
-                jobs.append({"title": text, "link": full, "needs_detail": False})
+        if "JobId=" not in href and "JobDetail" not in href:
+            continue
+        full = normalize_link(href, base)
+        # Extract JobId so we don't queue the same vacancy twice
+        # (listing pages often have multiple links per row)
+        job_id_match = re.search(r"JobId=(\d+)", href)
+        uid = job_id_match.group(1) if job_id_match else full
+        if uid in seen_ids:
+            continue
+        seen_ids.add(uid)
+        text = a.get_text(strip=True)
+        jobs.append({"title": text, "link": full, "needs_detail": True})
     return jobs
 
 
@@ -381,8 +393,8 @@ async def check_site(url: str, seen_jobs: set, context) -> int:
                 title = job["title"]
                 link = job["link"]
 
-                # For HealthJobsUK the listing title is often truncated —
-                # fetch the detail page to get the canonical <h1>.
+                # Fetch detail page when listing link text is unreliable
+                                                                  
                 if job.get("needs_detail"):
                     job_id = extract_job_id(link)
                     if job_id in seen_jobs:
