@@ -24,7 +24,7 @@ URLS = [
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=572&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=97667&_srt=startdate&_sd=a",
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=558&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=110250&_srt=startdate&_sd=a",
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=581&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=44291&_srt=startdate&_sd=a",
-
+    
     # NHS Jobs England
     "https://www.jobs.nhs.uk/candidate/search/results?keyword=doctor&sort=publicationDateDesc",
     "https://www.jobs.nhs.uk/candidate/search/results?searchFormType=sortBy&sort=publicationDateDesc&searchByLocationOnly=true&language=en#",
@@ -51,7 +51,7 @@ GRADE_KEYWORDS = [
     "st1", "st2", "st3",
     "registrar",
     "trust doctor", "trust grade",
-    "clinical fellow", "junior fellow", "junior clinical fellow",
+    "clinical fellow", "junior fellow", "junior clinical fellow", 
     "specialty doctor",
     "junior",
     "locum doctor"
@@ -63,7 +63,7 @@ EXCLUDE_KEYWORDS = [
     "manager", "director", "admin",
     "physiotherapist", "radiographer",
     "lead",
-    "scientist", "receptionist", "housekeeper", "cook", "clerk",
+    "scientist", "receptionist", "housekeeper", "cook", "clerk", 
     "practitioner",
     "nutritionist",
     "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker"
