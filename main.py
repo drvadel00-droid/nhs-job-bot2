@@ -2,7 +2,6 @@ import asyncio
 import random
 import re
 import time
-           
 import requests
 from datetime import datetime
 from bs4 import BeautifulSoup
@@ -31,9 +30,6 @@ URLS = [
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=581&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=44291&_srt=publicationdate&_sd=desc",
     # NHS Jobs England — medical & dental staff group, junior pay bands
     "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
-                                                                                                 
-                                                                                                                                              
-                                                                                                                                  
     # HSCNI (Northern Ireland)
     "https://jobs.hscni.net/Search?SearchCatID=0",
     # Scotland
@@ -190,34 +186,89 @@ _LOCATION_LABELS = {"location", "town", "city", "base", "site", "place of work"}
 _SALARY_LABELS   = {"salary", "pay", "remuneration", "wage", "pay range", "salary range"}
 _GRADE_LABELS    = {"grade", "band", "pay band", "nhs band", "agenda for change",
                     "afc band", "staff group", "job level", "pay grade"}
-                                                                                     
-                    
-                                      
-                                           
-                            
-                                           
-                                                         
-                                                       
-                                                            
-                                                     
-                     
-            
 
 def _match_label(raw: str, label_set: set) -> bool:
     return any(lbl in raw.lower() for lbl in label_set)
 
 def _scrub(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
-                                                   
-                                   
-                     
-            
+
+# Grade tokens used to detect concatenated HealthJobsUK h1
+_GRADE_TOKENS = [
+    "FY1", "FY2", "CT1", "CT2", "CT3", "ST1", "ST2", "ST3",
+    "Registrar", "Trust Doctor", "Trust Grade", "Clinical Fellow",
+    "Specialty Doctor", "Junior", "Locum Doctor", "Foundation",
+]
+
+def _split_healthjobsuk_h1(raw: str) -> dict:
+    """
+    HealthJobsUK concatenates everything into one block of text, e.g.:
+      "Medical Education Fellow in General Medicine (ST3)ST3
+       Harrogate and District NHS Foundation Trust, Harrogate
+       Speciality: General Medicine  Salary: £65,048 - £73,992 per annum"
+
+    Parse it into clean title / grade / location / salary fields.
+    """
+    result = {"title": None, "location": None, "salary": None, "grade": None}
+
+    # --- Salary ---
+    sal_m = re.search(r"Salary\s*:?\s*(£[\d,]+\s*[-–to]+\s*£[\d,]+(?:\s*per\s+annum)?)", raw, re.I)
+    if sal_m:
+        result["salary"] = sal_m.group(1).strip()
+
+    # --- Grade: prefer parenthesised form first, then bare token ---
+    grade_paren = re.search(
+        r"\((" + "|".join(re.escape(g) for g in _GRADE_TOKENS) + r")\)",
+        raw, re.I
+    )
+    grade_bare = re.search(
+        r"\b(" + "|".join(re.escape(g) for g in _GRADE_TOKENS) + r")\b",
+        raw, re.I
+    )
+    if grade_paren:
+        result["grade"] = grade_paren.group(1)
+    elif grade_bare:
+        result["grade"] = grade_bare.group(1)
+
+    # --- Location: city that follows "NHS ... Trust," or "Hospital," ---
+    loc_m = re.search(
+        r"(?:NHS[^,\n]+?(?:Trust|Hospital)|Foundation Trust)[,\s]+([A-Z][A-Za-z\s\-]+?)(?=\s*(?:Specialit|Salary|$))",
+        raw, re.I
+    )
+    if loc_m:
+        result["location"] = loc_m.group(1).strip().rstrip(",")
+
+    # --- Title: everything before the first grade token / trust / salary marker ---
+    cutoff = len(raw)
+    for pattern in [
+        r"\s*\([A-Z]{2}\d\)",                         # (ST3) grade in parens
+        r"\b(?:NHS|Foundation Trust|Hospital Trust)\b",
+        r"\bSpecialit(?:y|ies)\b",
+        r"\bSalary\b",
+    ]:
+        m = re.search(pattern, raw, re.I)
+        if m and m.start() < cutoff:
+            cutoff = m.start()
+
+    raw_title = raw[:cutoff].strip().rstrip(",").strip()
+    # Remove trailing bare grade token if still present
+    for g in _GRADE_TOKENS:
+        raw_title = re.sub(r"\s*\b" + re.escape(g) + r"\b\s*$", "", raw_title, flags=re.I).strip()
+    result["title"] = raw_title or None
+
+    return result
+
 
 def parse_detail_soup(soup: BeautifulSoup) -> dict:
     """
     Extract title, location, salary and grade from a job detail page.
-    Tries four HTML patterns used across NHS job sites:
-      1. <dl> / <dt> + <dd> pairs  (most common)
+
+    For HealthJobsUK the <h1> contains everything concatenated — detected by
+    the presence of 'Salary' or 'NHS' inside the h1 text and handled by
+    _split_healthjobsuk_h1().
+
+    For all other sites four generic strategies are tried:
+      1. <dl> / <dt> + <dd> pairs
       2. <table> <th>/<td> rows
       3. <li> with bold/strong label
       4. <p>/<div>/<span> with "label: value" text
@@ -225,8 +276,15 @@ def parse_detail_soup(soup: BeautifulSoup) -> dict:
     result = {"title": None, "location": None, "salary": None, "grade": None}
 
     h1 = soup.find("h1")
-    if h1:
-        result["title"] = _scrub(h1.get_text())
+    raw_h1 = _scrub(h1.get_text()) if h1 else ""
+
+    # Detect concatenated HealthJobsUK h1 (contains embedded Salary: or NHS Trust)
+    if raw_h1 and (re.search(r"Salary\s*:", raw_h1, re.I) or
+                   re.search(r"\bNHS\b|\bFoundation Trust\b", raw_h1, re.I)):
+        parsed = _split_healthjobsuk_h1(raw_h1)
+        result.update({k: v for k, v in parsed.items() if v})
+    else:
+        result["title"] = raw_h1 or None
 
     def try_fill(label_raw: str, value_raw: str):
         label = label_raw.strip().rstrip(":").strip()
@@ -242,9 +300,9 @@ def parse_detail_soup(soup: BeautifulSoup) -> dict:
 
     # Strategy 1: <dl> <dt>/<dd> pairs
     for dl in soup.find_all("dl"):
-        dts = dl.find_all("dt")
-        dds = dl.find_all("dd")
-        for dt, dd in zip(dts, dds):
+        for dt, dd in zip(dl.find_all("dt"), dl.find_all("dd")):
+                               
+                                    
             try_fill(dt.get_text(), dd.get_text())
 
     # Strategy 2: <table> rows
@@ -254,29 +312,31 @@ def parse_detail_soup(soup: BeautifulSoup) -> dict:
             if len(cells) >= 2:
                 try_fill(cells[0].get_text(), cells[1].get_text())
 
-    # Strategy 3: <li> with bold label
+    # Strategy 3: <li> with bold/strong label
     for li in soup.find_all("li"):
-        strong = li.find(["strong", "b", "span"])
+        strong = li.find(["strong", "b"])
         if strong:
-            label = strong.get_text()
-            value = li.get_text().replace(strong.get_text(), "", 1)
-            try_fill(label, value)
+                                     
+            try_fill(strong.get_text(), li.get_text().replace(strong.get_text(), "", 1))
+                                  
 
-    # Strategy 4: "label: value" text in block elements
+    # Strategy 4: "label: value" in block elements
     for tag in soup.find_all(["p", "div", "span"]):
+        # Only consider shallow elements (no nested block tags) to avoid huge blobs
+        if tag.find(["p", "div", "table", "ul"]):
+            continue
         text = tag.get_text()
-        for sep in [":", "-", "–"]:
-            if sep in text:
-                parts = text.split(sep, 1)
-                if len(parts) == 2:
-                    try_fill(parts[0], parts[1])
-                    break
+                                     
+        if ":" in text:
+            parts = text.split(":", 1)
+            if len(parts[0].split()) <= 4:   # label should be short
+                try_fill(parts[0], parts[1])
+                         
 
     return result
 
 # ================= BROWSER FACTORY ================= #
 async def create_context(playwright):
-                                                                        
     browser = await playwright.chromium.launch(
         headless=True,
         args=[
@@ -305,15 +365,10 @@ async def create_context(playwright):
             "Upgrade-Insecure-Requests": "1",
         },
     )
-                                                       
     await context.add_init_script("""
-                                          
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                             
         Object.defineProperty(navigator, 'plugins',   { get: () => [1,2,3,4,5] });
-                         
         Object.defineProperty(navigator, 'languages', { get: () => ['en-GB', 'en'] });
-                                
         window.chrome = { runtime: {} };
     """)
     return browser, context
@@ -345,9 +400,7 @@ async def random_mouse_move(page):
 # ================= SITE-SPECIFIC LISTING PARSERS ================= #
 
 def parse_healthjobsuk(soup: BeautifulSoup, base: str) -> list[dict]:
-                                                                      
     jobs = []
-                                                 
     for a in soup.select("a[href*='/job/']"):
         href = normalize_link(a["href"], base)
         text = a.get_text(strip=True)
@@ -355,18 +408,11 @@ def parse_healthjobsuk(soup: BeautifulSoup, base: str) -> list[dict]:
             jobs.append({"title": text, "link": href, "needs_detail": True})
     return jobs
 
-
 def parse_nhsjobs(soup: BeautifulSoup, base: str) -> list[dict]:
-                                                    
-
-                                                                 
-                                                                  
-       
     seen_ids: set = set()
     jobs = []
     for a in soup.select("a[href*='/candidate/jobadvert/']"):
         href = normalize_link(a["href"], base)
-                                               
         uid = href.split("?")[0].rstrip("/").split("/")[-1]
         if uid in seen_ids:
             continue
@@ -376,9 +422,7 @@ def parse_nhsjobs(soup: BeautifulSoup, base: str) -> list[dict]:
             jobs.append({"title": text, "link": href, "needs_detail": True})
     return jobs
 
-
 def parse_hscni(soup: BeautifulSoup, base: str) -> list[dict]:
-                                                          
     jobs = []
     for a in soup.select("a[href*='/Job/'], a[href*='/job/'], a[href*='JobID=']"):
         href = normalize_link(a["href"], base)
@@ -387,14 +431,7 @@ def parse_hscni(soup: BeautifulSoup, base: str) -> list[dict]:
             jobs.append({"title": text, "link": href, "needs_detail": True})
     return jobs
 
-
 def parse_scotland(soup: BeautifulSoup, base: str) -> list[dict]:
-                                                               
-
-                                                                       
-                                                                      
-                                                                          
-       
     seen_ids: set = set()
     jobs = []
     for a in soup.find_all("a", href=True):
@@ -402,8 +439,6 @@ def parse_scotland(soup: BeautifulSoup, base: str) -> list[dict]:
         if "JobId=" not in href and "JobDetail" not in href:
             continue
         full = normalize_link(href, base)
-                                                                
-                                                           
         job_id_match = re.search(r"JobId=(\d+)", href)
         uid = job_id_match.group(1) if job_id_match else full
         if uid in seen_ids:
@@ -413,9 +448,7 @@ def parse_scotland(soup: BeautifulSoup, base: str) -> list[dict]:
         jobs.append({"title": text, "link": full, "needs_detail": True})
     return jobs
 
-
 def parse_generic(soup: BeautifulSoup, base: str) -> list[dict]:
-                                                                  
     jobs = []
     for a in soup.find_all("a", href=True):
         href = a["href"]
@@ -425,7 +458,6 @@ def parse_generic(soup: BeautifulSoup, base: str) -> list[dict]:
         if text and len(text) > 8:
             jobs.append({"title": text, "link": normalize_link(href, base), "needs_detail": True})
     return jobs
-
 
 def get_parser(url: str):
     if "healthjobsuk.com" in url:
@@ -440,7 +472,6 @@ def get_parser(url: str):
 
 # ================= RETRY WRAPPER ================= #
 async def goto_with_retry(page, url: str, retries: int = 3, timeout: int = PAGE_TIMEOUT) -> bool:
-                                                                                  
     backoff = 5
     for attempt in range(1, retries + 1):
         try:
@@ -488,7 +519,6 @@ async def fetch_detail_info(context, link: str) -> dict | None:
         return None
     finally:
         await page.close()
-               
 
 # ================= MAIN SCRAPER ================= #
 async def check_site(url: str, seen_jobs: set, seen_sigs: set, context) -> int:
@@ -501,7 +531,6 @@ async def check_site(url: str, seen_jobs: set, seen_sigs: set, context) -> int:
 
     try:
         await stealth_async(page)
-                                                                    
         await asyncio.sleep(random.uniform(2, 6))
 
         ok = await goto_with_retry(page, url)
@@ -509,7 +538,6 @@ async def check_site(url: str, seen_jobs: set, seen_sigs: set, context) -> int:
             log(f"⛔ Giving up on {url}.")
             return 0
 
-                                                
         await random_mouse_move(page)
         await asyncio.sleep(random.uniform(1, 2.5))
         await human_scroll(page)
@@ -529,16 +557,11 @@ async def check_site(url: str, seen_jobs: set, seen_sigs: set, context) -> int:
                 job_id = extract_job_id(link)
 
                 # Skip if already seen by URL-based ID
-                                           
-                                                 
                 if job_id in seen_jobs:
                     continue
 
                 # Fetch full details from the job page
                 info = await fetch_detail_info(context, link)
-                                                                      
-                                    
-                                            
                 await asyncio.sleep(random.uniform(1, 2.5))
 
                 if info and info.get("title"):
@@ -578,7 +601,6 @@ async def check_site(url: str, seen_jobs: set, seen_sigs: set, context) -> int:
                 seen_sigs.add(sig)
                 new_jobs += 1
 
-                                                       
                 await asyncio.sleep(random.uniform(1, 2))
 
             except Exception as e:
@@ -607,7 +629,6 @@ async def main():
 
         while True:
             for url in URLS:
-                                                                               
                 if urls_checked > 0 and urls_checked % CONTEXT_ROTATE_EVERY == 0:
                     log("🔄 Rotating browser context...")
                     try:
@@ -629,7 +650,6 @@ async def main():
                     browser, context = await create_context(p)
 
                 urls_checked += 1
-                                                                               
                 await asyncio.sleep(random.uniform(6, 15))
 
             log(f"💤 Full cycle done. Sleeping {CHECK_INTERVAL}s before next cycle.\n")
