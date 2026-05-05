@@ -1,7 +1,6 @@
 import asyncio
 import random
 import re
-import time
            
 import requests
 from datetime import datetime
@@ -14,14 +13,15 @@ from fake_useragent import UserAgent
 BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"
 CHAT_ID = "-1003888963521"
 CHECK_INTERVAL = 120          # seconds between full cycles
-PAGE_TIMEOUT = 60_000         # ms
-DETAIL_TIMEOUT = 25_000       # ms for job-detail pages
+PAGE_TIMEOUT = 45_000         # ms — per page.goto()
+DETAIL_TIMEOUT = 20_000       # ms — for detail pages
+SITE_HARD_LIMIT = 300         # seconds — hard kill per URL task (prevents forever-hang)
 TELEGRAM_SEND_INTERVAL = 1.0  # seconds between Telegram sends
 
 ua = UserAgent()
 
 URLS = [
-    # HealthJobsUK — newest first (general + per-trust)
+    # HealthJobsUK
     "https://www.healthjobsuk.com/job_list?JobSearch_Submit=Search&_srt=publicationdate&_sd=desc",
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=534&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=64082&_srt=startdate&_sd=d",
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=737&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=81534&_srt=startdate&_sd=a",
@@ -30,7 +30,7 @@ URLS = [
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=558&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=110250&_srt=startdate&_sd=a",
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=581&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=44291&_srt=startdate&_sd=a",
     # NHS Jobs England
-    "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en#",
+    "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
     # HSCNI (Northern Ireland)
     "https://jobs.hscni.net/Search?SearchCatID=0",
     # Scotland
@@ -78,11 +78,10 @@ VIEWPORTS = [
 ]
 
 # ================= LOGGING ================= #
-def log(message: str):
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}", flush=True)
+def log(msg: str):
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 # ================= SEEN-JOBS PERSISTENCE ================= #
-                                                                      
 _seen_lock = asyncio.Lock()
 
 def load_seen() -> set:
@@ -98,19 +97,17 @@ async def async_save_seen(job_id: str):
             f.write(job_id + "\n")
 
 # ================= TELEGRAM QUEUE ================= #
-                                                                    
-                                                             
 _tg_queue: asyncio.Queue = asyncio.Queue()
 
 async def telegram_consumer():
-    """Single coroutine that drains _tg_queue, one message per second."""
+    """Drains _tg_queue at one message per second to avoid Telegram 429s."""
     api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     while True:
-        message = await _tg_queue.get()
-        if message is None:          # shutdown sentinel
+        msg = await _tg_queue.get()
+        if msg is None:
             _tg_queue.task_done()
             break
-        payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "HTML"}
+        payload = {"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"}
         backoff = 5
         for attempt in range(5):
             try:
@@ -119,9 +116,9 @@ async def telegram_consumer():
                     log("✅ Telegram sent")
                     break
                 elif r.status_code == 429:
-                    retry_after = r.json().get("parameters", {}).get("retry_after", backoff)
-                    log(f"⚠️  Telegram rate-limit — sleeping {retry_after}s")
-                    await asyncio.sleep(retry_after)
+                    wait = r.json().get("parameters", {}).get("retry_after", backoff)
+                    log(f"⚠️  Telegram rate-limit — sleeping {wait}s")
+                    await asyncio.sleep(wait)
                     backoff *= 2
                 else:
                     log(f"❌ Telegram HTTP {r.status_code}: {r.text[:200]}")
@@ -131,14 +128,12 @@ async def telegram_consumer():
                 await asyncio.sleep(backoff)
                 backoff *= 2
         _tg_queue.task_done()
-                                                           
         await asyncio.sleep(TELEGRAM_SEND_INTERVAL)
 
-def enqueue_telegram(message: str):
-                                                                              
-    _tg_queue.put_nowait(message)
+def enqueue_telegram(msg: str):
+    _tg_queue.put_nowait(msg)
 
-# ================= FILTER LOGIC ================= #
+# ================= HELPERS ================= #
 def relevant_job(title: str) -> bool:
     t = title.lower()
     if any(ex in t for ex in EXCLUDE_KEYWORDS):
@@ -150,8 +145,8 @@ def relevant_job(title: str) -> bool:
     return True
 
 def extract_job_id(link: str) -> str:
-    match = re.search(r"\d{4,}", link)
-    return match.group() if match else link
+    m = re.search(r"\d{4,}", link)
+    return m.group() if m else link
 
 def normalize_link(href: str, base: str) -> str:
     if href.startswith("http"):
@@ -164,384 +159,470 @@ def get_base(url: str) -> str:
     m = re.match(r"(https?://[^/]+)", url)
     return m.group(1) if m else ""
 
+def txt(el) -> str:
+    """Safe .get_text() with whitespace collapse."""
+    return " ".join(el.get_text().split()) if el else ""
+
 # ================= HUMAN-LIKE HELPERS ================= #
 async def human_scroll(page):
     try:
-        total_height = await page.evaluate("document.body.scrollHeight")
-                                                                                     
+        total = await page.evaluate("document.body.scrollHeight")
         scrolled = 0
-        while scrolled < total_height:
+        while scrolled < total:
             step = random.randint(300, 700)
             scrolled += step
             await page.mouse.wheel(0, step)
-            await asyncio.sleep(random.uniform(0.3, 0.9))
+            await asyncio.sleep(random.uniform(0.3, 0.8))
         await page.mouse.wheel(0, -random.randint(200, 500))
-        await asyncio.sleep(random.uniform(0.5, 1.2))
+        await asyncio.sleep(random.uniform(0.4, 1.0))
     except Exception:
         pass
 
 async def random_mouse_move(page):
     try:
         vp = page.viewport_size or {"width": 1280, "height": 800}
-        x = random.randint(100, vp["width"] - 100)
-        y = random.randint(100, vp["height"] - 100)
-        await page.mouse.move(x, y)
+        await page.mouse.move(random.randint(100, vp["width"] - 100),
+                              random.randint(100, vp["height"] - 100))
+                                   
     except Exception:
         pass
 
 # ================= BROWSER FACTORY ================= #
 async def create_context(playwright):
-                                                                        
     browser = await playwright.chromium.launch(
         headless=True,
         args=[
-            "--no-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-gpu",
+                           
+            "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
+                            
             "--disable-setuid-sandbox",
             "--disable-blink-features=AutomationControlled",
             "--disable-infobars",
             "--window-size=1920,1080",
-                                
         ],
     )
     vp = random.choice(VIEWPORTS)
-    context = await browser.new_context(
+    ctx = await browser.new_context(
         user_agent=ua.random,
         viewport=vp,
         locale="en-GB",
         timezone_id="Europe/London",
         java_script_enabled=True,
-        ignore_https_errors=False,
+                                  
         extra_http_headers={
             "Accept-Language": "en-GB,en;q=0.9",
             "Accept-Encoding": "gzip, deflate, br",
             "DNT": "1",
-            "Upgrade-Insecure-Requests": "1",
+                                             
         },
     )
-    await context.add_init_script("""
+    await ctx.add_init_script("""
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
         Object.defineProperty(navigator, 'plugins',   { get: () => [1,2,3,4,5] });
-        Object.defineProperty(navigator, 'languages', { get: () => ['en-GB', 'en'] });
+        Object.defineProperty(navigator, 'languages', { get: () => ['en-GB','en'] });
         window.chrome = { runtime: {} };
     """)
-    return browser, context
+    return browser, ctx
 
-# ================= SITE-SPECIFIC PARSERS ================= #
-def parse_healthjobsuk(soup: BeautifulSoup, base: str) -> list[dict]:
-    jobs = []
-    for a in soup.select("a[href*='/job/']"):
-        href = normalize_link(a["href"], base)
-        text = a.get_text(strip=True)
-        if text and len(text) > 5:
-            jobs.append({"title": text, "link": href, "needs_detail": True, "site": "healthjobsuk"})
-    return jobs
-
-def parse_nhsjobs(soup: BeautifulSoup, base: str) -> list[dict]:
-    seen_ids: set = set()
-    jobs = []
-    for a in soup.select("a[href*='/candidate/jobadvert/']"):
-        href = normalize_link(a["href"], base)
-        uid = href.split("?")[0].rstrip("/").split("/")[-1]
-        if uid in seen_ids:
-            continue
-        seen_ids.add(uid)
-        text = a.get_text(strip=True)
-        if text and len(text) > 5:
-            jobs.append({"title": text, "link": href, "needs_detail": True, "site": "nhsjobs"})
-    return jobs
-
-def parse_hscni(soup: BeautifulSoup, base: str) -> list[dict]:
-    jobs = []
-    for a in soup.select("a[href*='/Job/'], a[href*='/job/'], a[href*='JobID=']"):
-        href = normalize_link(a["href"], base)
-        text = a.get_text(strip=True)
-        if text and len(text) > 5:
-            jobs.append({"title": text, "link": href, "needs_detail": True, "site": "hscni"})
-    return jobs
-
-def parse_scotland(soup: BeautifulSoup, base: str) -> list[dict]:
-    seen_ids: set = set()
-    jobs = []
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        if "JobId=" not in href and "JobDetail" not in href:
-            continue
-        full = normalize_link(href, base)
-        job_id_match = re.search(r"JobId=(\d+)", href)
-        uid = job_id_match.group(1) if job_id_match else full
-        if uid in seen_ids:
-            continue
-        seen_ids.add(uid)
-        text = a.get_text(strip=True)
-        jobs.append({"title": text, "link": full, "needs_detail": True, "site": "scotland"})
-    return jobs
-
-def parse_generic(soup: BeautifulSoup, base: str) -> list[dict]:
-    jobs = []
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        if "job" not in href.lower():
-            continue
-        text = a.get_text(strip=True)
-        if text and len(text) > 8:
-            jobs.append({"title": text, "link": normalize_link(href, base), "needs_detail": False, "site": "generic"})
-    return jobs
-
-def get_parser(url: str):
-    if "healthjobsuk.com" in url:
-        return parse_healthjobsuk
-    if "jobs.nhs.uk" in url:
-        return parse_nhsjobs
-    if "hscni.net" in url:
-        return parse_hscni
-    if "jobs.scot.nhs.uk" in url:
-        return parse_scotland
-    return parse_generic
-
-# ================= RETRY WRAPPER ================= #
-async def goto_with_retry(page, url: str, retries: int = 3, timeout: int = PAGE_TIMEOUT) -> bool:
+# ================= GOTO WITH RETRY ================= #
+async def goto_with_retry(page, url: str, retries: int = 3,
+                          timeout: int = PAGE_TIMEOUT) -> bool:
+    """
+    Navigate with retry. Uses domcontentloaded (not networkidle) so the
+    call always completes within `timeout` ms and never hangs forever.
+    """
     backoff = 5
     for attempt in range(1, retries + 1):
         try:
-            response = await page.goto(url, wait_until="networkidle", timeout=timeout)
-            if response and response.status == 200:
+            resp = await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+            if resp and resp.status == 200:
                 return True
-            if response and response.status == 403:
+            if resp and resp.status == 403:
                 log(f"⛔ 403 on {url} (attempt {attempt}). Backing off {backoff}s.")
                 await asyncio.sleep(backoff)
                 backoff *= 2
-            elif response:
-                log(f"⚠️  HTTP {response.status} on {url} (attempt {attempt}).")
+            elif resp:
+                log(f"⚠️  HTTP {resp.status} on {url} (attempt {attempt}).")
                 return False
         except PWTimeout:
             log(f"⏱️  Timeout on {url} (attempt {attempt}). Retrying in {backoff}s.")
             await asyncio.sleep(backoff)
             backoff *= 2
         except Exception as e:
-            log(f"❌ Error navigating {url}: {e} (attempt {attempt}).")
+            log(f"❌ Nav error {url}: {e} (attempt {attempt}).")
             await asyncio.sleep(backoff)
             backoff *= 2
     return False
 
-# ================= DETAIL-PAGE FETCHERS ================= #
+# ================= SITE-SPECIFIC PARSERS ================= #
 
-def _first_text(soup: BeautifulSoup, *selectors: str) -> str:
-    """Return the text of the first matching selector, or empty string."""
-    for sel in selectors:
-        el = soup.select_one(sel)
-        if el:
-            t = el.get_text(" ", strip=True)
-            if t:
-                return t
-    return ""
+def parse_nhsjobs(soup: BeautifulSoup, base: str) -> list[dict]:
+    """
+    Extract everything from the search-result cards directly —
+    NO detail-page visit needed.
 
-async def fetch_detail_generic(context, link: str) -> dict:
-    """Minimal detail fetch — returns at least {'title': ...}."""
+    Card structure (from actual HTML):
+      <li data-test="search-result">
+        <a data-test="search-result-job-title">…title…</a>
+        <div data-test="search-result-location">
+          <h3>  employer  <div class="location-font-size"> location </div> </h3>
+        </div>
+        <li data-test="search-result-salary">   Salary: <strong>…</strong>  </li>
+        <li data-test="search-result-closingDate"> Closing date: <strong>…</strong> </li>
+        <li data-test="search-result-publicationDate"> Date posted: <strong>…</strong> </li>
+        <li data-test="search-result-jobType"> Contract type: <strong>…</strong> </li>
+        <li data-test="search-result-workingPattern"> Working pattern: <strong>…</strong> </li>
+      </li>
+    """
+    jobs = []
+    for card in soup.select("li[data-test='search-result']"):
+        # ── Link & title ───────────────────────────────────────────────────
+        a = card.select_one("a[data-test='search-result-job-title']")
+        if not a:
+            continue
+        href  = normalize_link(a.get("href", ""), base)
+        title = txt(a)
+        if not title or not href:
+            continue
+
+        # ── Employer & location ────────────────────────────────────────────
+        loc_block = card.select_one("[data-test='search-result-location']")
+        employer = location = ""
+        if loc_block:
+            h3 = loc_block.find("h3")
+            if h3:
+                loc_div = h3.find("div", class_="location-font-size")
+                if loc_div:
+                    location = txt(loc_div)
+                    loc_div.extract()          # remove so employer text is clean
+                employer = txt(h3)
+
+        # ── Salary ─────────────────────────────────────────────────────────
+        salary_li = card.select_one("li[data-test='search-result-salary']")
+        salary = txt(salary_li.find("strong")) if salary_li else ""
+
+        # ── Closing date ───────────────────────────────────────────────────
+        close_li = card.select_one("li[data-test='search-result-closingDate']")
+        closing_date = txt(close_li.find("strong")) if close_li else ""
+
+        # ── Contract type ──────────────────────────────────────────────────
+        type_li = card.select_one("li[data-test='search-result-jobType']")
+        contract = txt(type_li.find("strong")) if type_li else ""
+
+        jobs.append({
+            "title":        title,
+            "link":         href,
+            "employer":     employer,
+            "location":     location,
+            "salary":       salary,
+            "closing_date": closing_date,
+            "contract":     contract,
+            "needs_detail": False,     # ← all data already on listing page
+            "site":         "nhsjobs",
+        })
+    return jobs
+
+
+def parse_healthjobsuk(soup: BeautifulSoup, base: str) -> list[dict]:
+    jobs = []
+    for a in soup.select("a[href*='/job/']"):
+        href = normalize_link(a["href"], base)
+        title = txt(a)
+        if title and len(title) > 5:
+            jobs.append({"title": title, "link": href, "needs_detail": True, "site": "healthjobsuk"})
+    return jobs
+
+                                                                
+                         
+             
+                                                             
+                                              
+                                                           
+                           
+                    
+                         
+                                     
+                                  
+                                                                                               
+               
+
+def parse_hscni(soup: BeautifulSoup, base: str) -> list[dict]:
+    jobs = []
+    for a in soup.select("a[href*='/Job/'], a[href*='/job/'], a[href*='JobID=']"):
+        href = normalize_link(a["href"], base)
+        title = txt(a)
+        if title and len(title) > 5:
+            jobs.append({"title": title, "link": href, "needs_detail": True, "site": "hscni"})
+    return jobs
+
+
+def parse_scotland(soup: BeautifulSoup, base: str) -> list[dict]:
+    seen: set = set()
+    jobs = []
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if "JobId=" not in href and "JobDetail" not in href:
+            continue
+        full = normalize_link(href, base)
+        m = re.search(r"JobId=(\d+)", href)
+        uid = m.group(1) if m else full
+        if uid in seen:
+            continue
+        seen.add(uid)
+                                     
+        jobs.append({"title": txt(a), "link": full, "needs_detail": True, "site": "scotland"})
+    return jobs
+
+
+def parse_generic(soup: BeautifulSoup, base: str) -> list[dict]:
+    jobs = []
+    for a in soup.find_all("a", href=True):
+                        
+        if "job" not in a["href"].lower():
+            continue
+        title = txt(a)
+        if title and len(title) > 8:
+            jobs.append({"title": title, "link": normalize_link(a["href"], base),
+                         "needs_detail": False, "site": "generic"})
+    return jobs
+
+
+def get_parser(url: str):
+    if "healthjobsuk.com" in url: return parse_healthjobsuk
+                                 
+    if "jobs.nhs.uk"      in url: return parse_nhsjobs
+                            
+    if "hscni.net"        in url: return parse_hscni
+                          
+    if "jobs.scot.nhs.uk" in url: return parse_scotland
+                             
+    return parse_generic
+
+# ================= DETAIL-PAGE FETCH (non-NHS-Jobs sites) ================= #
+                                                                                                 
+               
+                                         
+            
+                                                                                      
+                                                   
+                           
+                                                   
+                                                                                     
+                                            
+                            
+                          
+                                                                                    
+                            
+                         
+                                                                                         
+                                        
+                        
+                              
+                                                                        
+                                        
+                        
+                
+
+                                                            
+
+                                                             
+                                                                          
+                         
+                                 
+              
+                                            
+                 
+                        
+             
+
+async def fetch_detail_title(context, link: str) -> str:
+    """Fetch <h1> from a detail page. Returns empty string on failure."""
     page = await context.new_page()
-    result = {}
+               
     try:
         await stealth_async(page)
-        await asyncio.sleep(random.uniform(1.5, 3.0))
+        await asyncio.sleep(random.uniform(1.0, 2.5))
         ok = await goto_with_retry(page, link, retries=2, timeout=DETAIL_TIMEOUT)
         if not ok:
-            return result
+            return ""
         soup = BeautifulSoup(await page.content(), "html.parser")
         h1 = soup.find("h1")
-        if h1:
-            result["title"] = h1.get_text(strip=True)
+        return txt(h1) if h1 else ""
+                                                     
     except Exception as e:
         log(f"Detail fetch error ({link}): {e}")
+            
+                          
+        return ""
+
+
+                                                           
+       
+                                                           
+                                                          
+                                                                
+       
+                                   
+                     
+        
+                                 
+                                                     
+                                                                                 
+                  
+                         
+
+                                                                 
+
+                                                                                                                                                                                                     
+                                      
+                 
+                                  
+                                        
+                 
+         
+
+                                                                                                                           
+                             
+                                                                                       
+                                                       
+                                                     
+                                                           
+                                                            
+                  
+                                                     
+
+                                                                                                                                           
+                                                                              
+                                        
+                                                       
+                                               
+                                                                
+                           
+                            
+                                       
+                                                      
+                                                            
+                                                      
+                                                         
+                                                    
+                                                               
+                                                          
+                                                            
+                                                 
+
+                                                                               
+                                                                                    
+
+                          
+                                                         
     finally:
         await page.close()
-    return result
+                 
 
 
-async def fetch_nhsjobs_detail(context, link: str) -> dict:
-    """
-    Scrape a jobs.nhs.uk advert page for all useful fields:
-      title, employer, location, salary, closing_date, ref
-    Uses layered selectors (data-test attrs → dt/dd fallback).
-    """
-    page = await context.new_page()
-    result: dict = {}
-    try:
-        await stealth_async(page)
-        await asyncio.sleep(random.uniform(1.5, 3.0))
-        ok = await goto_with_retry(page, link, retries=2, timeout=DETAIL_TIMEOUT)
-        if not ok:
-            return result
-
-        soup = BeautifulSoup(await page.content(), "html.parser")
-
-        # ── Title ──────────────────────────────────────────────────────────
-        result["title"] = _first_text(
-            soup,
-            "h1.nhsuk-heading-xl",
-            "h1[data-test='job-title']",
-            "h1",
-        )
-
-        # ── Named data-test attributes (most reliable) ─────────────────────
-        for field, tests in {
-            "employer":     ["[data-test='employer-name']",  "[data-test='employer']"],
-            "location":     ["[data-test='location']"],
-            "salary":       ["[data-test='salary']"],
-            "closing_date": ["[data-test='closing-date']"],
-            "ref":          ["[data-test='job-reference']"],
-        }.items():
-            result[field] = _first_text(soup, *tests)
-
-        # ── Fallback: walk all <dt>/<dd> pairs ─────────────────────────────
-        if not any(result.get(k) for k in ("employer", "location", "salary")):
-            for dt in soup.select("dt"):
-                label = dt.get_text(strip=True).lower()
-                dd = dt.find_next_sibling("dd")
-                val = dd.get_text(" ", strip=True) if dd else ""
-                if not val:
-                    continue
-                if "employer" in label:
-                    result.setdefault("employer", val)
-                elif "location" in label or "town" in label:
-                    result.setdefault("location", val)
-                elif "salary" in label or "pay" in label:
-                    result.setdefault("salary", val)
-                elif "closing" in label or "deadline" in label:
-                    result.setdefault("closing_date", val)
-                elif "reference" in label or "ref" in label:
-                    result.setdefault("ref", val)
-
-        log(f"   NHS detail scraped → title='{result.get('title','')[:50]}' "
-            f"loc='{result.get('location','')}' salary='{result.get('salary','')}'")
-
-    except Exception as e:
-        log(f"NHS Jobs detail fetch error ({link}): {e}")
-    finally:
-        await page.close()
-    return result
-
-
-async def fetch_detail(context, link: str, site: str) -> dict:
-    if site == "nhsjobs":
-        return await fetch_nhsjobs_detail(context, link)
-    return await fetch_detail_generic(context, link)
+                                                              
+                         
+                                                        
+                                                    
 
 
 # ================= MESSAGE FORMATTER ================= #
-def format_message(job: dict, details: dict, link: str) -> str:
-    title        = details.get("title")        or job.get("title", "Unknown")
-    employer     = details.get("employer",     "")
-    location     = details.get("location",     "")
-    salary       = details.get("salary",       "")
-    closing_date = details.get("closing_date", "")
-    ref          = details.get("ref",          "")
+def format_message(job: dict, link: str) -> str:
+                                                                             
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
 
     lines = ["🚨 <b>NEW NHS JOB</b>\n",
-             f"🏥 <b>{title}</b>"]
-    if employer:
-        lines.append(f"🏢 {employer}")
-    if location:
-        lines.append(f"📍 {location}")
-    if salary:
-        lines.append(f"💷 {salary}")
-    if closing_date:
-        lines.append(f"📅 Closes: {closing_date}")
-    if ref:
-        lines.append(f"🔖 Ref: {ref}")
+             f"🏥 <b>{job['title']}</b>"]
+    if job.get("employer"):
+        lines.append(f"🏢 {job['employer']}")
+    if job.get("location"):
+        lines.append(f"📍 {job['location']}")
+    if job.get("salary"):
+        lines.append(f"💷 {job['salary']}")
+    if job.get("closing_date"):
+        lines.append(f"📅 Closes: {job['closing_date']}")
+    if job.get("contract"):
+        lines.append(f"📋 {job['contract']}")
     lines.append(f"🔗 {link}")
     return "\n".join(lines)
 
 
 # ================= SINGLE-URL SCRAPER ================= #
 async def check_site(url: str, seen_jobs: set, playwright) -> int:
-    """
-    Scrape one URL in its own dedicated browser+context.
-    Parallel-safe via _seen_lock. Results pushed onto _tg_queue.
+       
+                                                        
                                                                 
-    """
+       
     log(f"🔍 Checking: {url}")
     new_jobs = 0
-    base   = get_base(url)
-    parser = get_parser(url)
+    base     = get_base(url)
+    parser   = get_parser(url)
 
     browser = context = page = None
-                                   
-
     try:
         browser, context = await create_context(playwright)
         page = await context.new_page()
         await stealth_async(page)
-        await asyncio.sleep(random.uniform(2, 5))
+        await asyncio.sleep(random.uniform(1.5, 4.0))
 
         if not await goto_with_retry(page, url):
-                  
             log(f"⛔ Giving up on {url}.")
             return 0
 
         await random_mouse_move(page)
-        await asyncio.sleep(random.uniform(1, 2.5))
+        await asyncio.sleep(random.uniform(0.8, 2.0))
         await human_scroll(page)
 
         soup       = BeautifulSoup(await page.content(), "html.parser")
-                                                    
         candidates = parser(soup, base)
-        log(f"   [{url[:55]}…] {len(candidates)} candidate links.")
+        log(f"   [{url[:60]}] {len(candidates)} candidate(s).")
 
         for job in candidates:
             try:
-                link    = job["link"]
-                site    = job.get("site", "generic")
-                job_id  = extract_job_id(link)
+                link   = job["link"]
+                                                    
+                job_id = extract_job_id(link)
 
-                                           
-                                                 
-                # Fast pre-check before network round-trip
+                # Fast pre-check
                 async with _seen_lock:
                     if job_id in seen_jobs:
-                                    
                         continue
 
-                # Fetch detail page
-                details: dict = {}
+                # For sites that need a detail-page visit, fetch the real title
+                                  
                 if job.get("needs_detail"):
-                    details = await fetch_detail(context, link, site)
-                                    
-                                            
-                    await asyncio.sleep(random.uniform(1.0, 2.0))
+                    detail_title = await fetch_detail_title(context, link)
+                    if detail_title:
+                        job = {**job, "title": detail_title}
+                    await asyncio.sleep(random.uniform(0.8, 1.8))
 
-                title = details.get("title") or job.get("title", "")
-                if not title or not relevant_job(title):
+                                                                    
+                if not job.get("title") or not relevant_job(job["title"]):
                     continue
 
-                                             
-
-                # Atomic check-and-claim
+                # Atomic claim
                 async with _seen_lock:
                     if job_id in seen_jobs:
                         continue
                     seen_jobs.add(job_id)
 
-                           
-                                                  
-                                            
-                                  
-                 
-                log(f"   🆕 NEW JOB: {title}")
-                enqueue_telegram(format_message(job, details, link))
+                log(f"   🆕 NEW JOB: {job['title']}")
+                enqueue_telegram(format_message(job, link))
                 await async_save_seen(job_id)
                 new_jobs += 1
 
             except Exception as e:
-                log(f"   ⚠️  Error processing job entry: {e}")
+                log(f"   ⚠️  Entry error: {e}")
 
-        log(f"   ✅ [{url[:55]}…] {new_jobs} new job(s) found.")
+        log(f"   ✅ [{url[:60]}] {new_jobs} new job(s) found.")
 
     except Exception as e:
         log(f"❌ SCRAPER ERROR on {url}: {e}")
     finally:
-                          
-            
         for obj in (page, context, browser):
             if obj:
                 try:
@@ -553,44 +634,60 @@ async def check_site(url: str, seen_jobs: set, playwright) -> int:
 
 
 # ================= PARALLEL CYCLE ================= #
+async def _site_with_timeout(url: str, seen_jobs: set, playwright) -> int:
+    """
+    Hard-kill wrapper: if check_site hasn't returned within SITE_HARD_LIMIT
+    seconds, cancel it and move on. This is the key fix for the stuck loop.
+    """
+    try:
+        return await asyncio.wait_for(
+            check_site(url, seen_jobs, playwright),
+            timeout=SITE_HARD_LIMIT,
+        )
+    except asyncio.TimeoutError:
+        log(f"⏰ Hard timeout ({SITE_HARD_LIMIT}s) hit for {url[:60]} — skipping.")
+        return 0
+    except Exception as e:
+        log(f"⚠️  Unexpected error for {url[:60]}: {e}")
+        return 0
+
+
 async def run_cycle(seen_jobs: set, playwright):
-                                                                      
-    log(f"🚀 Starting parallel cycle — {len(URLS)} URLs simultaneously…")
-             
-    tasks   = [asyncio.create_task(check_site(url, seen_jobs, playwright)) for url in URLS]
-                       
-     
+    log(f"🚀 Parallel cycle — {len(URLS)} URLs (hard limit {SITE_HARD_LIMIT}s each)…")
+    tasks   = [asyncio.create_task(_site_with_timeout(u, seen_jobs, playwright)) for u in URLS]
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    total   = 0
-    for url, res in zip(URLS, results):
-        if isinstance(res, Exception):
-            log(f"⚠️  Task raised for {url[:55]}: {res}")
-        else:
-            total += res
-    log(f"✅ Cycle complete — {total} new job(s) found across all URLs.")
+    total   = sum(r for r in results if isinstance(r, int))
+                                       
+                                      
+                                                             
+             
+                        
+    log(f"✅ Cycle done — {total} new job(s) total.")
 
 
 # ================= ENTRY POINT ================= #
 async def main():
-    log("🚀 NHS JOB BOT STARTED (parallel + Telegram-queue mode)")
+    log("🚀 NHS JOB BOT STARTED")
     seen_jobs = load_seen()
     log(f"   Loaded {len(seen_jobs)} previously seen job IDs.")
 
-    # Background task: drains the Telegram queue at 1 msg/sec
-    consumer_task = asyncio.create_task(telegram_consumer())
+    # Start Telegram sender in background — lives for the entire process lifetime
+    asyncio.create_task(telegram_consumer())
 
     async with async_playwright() as p:
+        cycle = 0
         while True:
-            # ── Run all URLs in parallel ───────────────────────────────────
+            cycle += 1
+            log(f"─── CYCLE {cycle} ───────────────────────────────────────────")
             try:
                 await run_cycle(seen_jobs, p)
             except Exception as e:
-                # Belt-and-suspenders: ensure the loop ALWAYS continues
-                log(f"🔥 Unexpected cycle-level error (continuing): {e}")
+                                                                       
+                log(f"🔥 Cycle-level error (will continue): {e}")
 
-            # ── Always sleep, then repeat ──────────────────────────────────
-            log(f"💤 Sleeping {CHECK_INTERVAL}s before next cycle.\n")
-            await asyncio.sleep(CHECK_INTERVAL)   # ← guaranteed to be reached
+                                                                                                                                                     
+            log(f"💤 Sleeping {CHECK_INTERVAL}s …\n")
+            await asyncio.sleep(CHECK_INTERVAL)   # ← ALWAYS reached
 
 
 if __name__ == "__main__":
