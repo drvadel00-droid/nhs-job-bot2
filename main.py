@@ -20,7 +20,7 @@ DETAIL_TIMEOUT = 25_000       # ms for job-detail pages
 ua = UserAgent()
 
 URLS = [
-    HealthJobsUK — newest first (general + per-trust)
+    # HealthJobsUK — newest first (general + per-trust)
     "https://www.healthjobsuk.com/job_list?JobSearch_Submit=Search&_srt=publicationdate&_sd=desc",
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=534&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=64082&_srt=publicationdate&_sd=desc",
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=737&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=81534&_srt=publicationdate&_sd=desc",
@@ -202,92 +202,90 @@ _GRADE_TOKENS = [
 
 def _split_healthjobsuk_h1(raw: str) -> dict:
     """
-    HealthJobsUK concatenates everything into one block of text, e.g.:
-      "Medical Education Fellow in General Medicine (ST3)ST3
-       Harrogate and District NHS Foundation Trust, Harrogate
-       Speciality: General Medicine  Salary: £65,048 - £73,992 per annum"
+    HealthJobsUK glues all fields into one string WITHOUT spaces between sections:
+      "Specialty Doctor in Emergency MedicineNHS Medical & Dental: Specialty Doctor
+       Calderdale and Huddersfield NHS Foundation Trust,Huddersfield & Calderdale
+       Speciality:Emergency MedicineSalary:£61,542 - £99,216 per annum"
 
-    Parse it into clean title / grade / location / salary fields.
+    The layout is always: [title][NHS grade label][Trust,Location][Speciality][Salary]
+    We extract each field by direct regex on the raw string, then derive the title
+    by finding where the first known section marker begins.
     """
     result = {"title": None, "location": None, "salary": None, "grade": None}
 
-    # --- Salary ---
-    sal_m = re.search(r"Salary\s*:?\s*(£[\d,]+\s*[-–to]+\s*£[\d,]+(?:\s*per\s+annum)?)", raw, re.I)
+    # ── Salary ────────────────────────────────────────────────────────────────
+    sal_m = re.search(
+        r"Salary\s*:?\s*(£[\d,\s]+[-–to]+\s*£[\d,\s]+(?:per\s+annum)?)",
+        raw, re.I
+    )
     if sal_m:
-        result["salary"] = sal_m.group(1).strip()
+        result["salary"] = re.sub(r"\s+", " ", sal_m.group(1)).strip()
 
-    # --- Grade: prefer parenthesised form first, then bare token ---
-    grade_paren = re.search(
-        r"\((" + "|".join(re.escape(g) for g in _GRADE_TOKENS) + r")\)",
-        raw, re.I
-    )
-    grade_bare = re.search(
-        r"\b(" + "|".join(re.escape(g) for g in _GRADE_TOKENS) + r")\b",
-        raw, re.I
-    )
-    if grade_paren:
-        result["grade"] = grade_paren.group(1)
-    elif grade_bare:
-        result["grade"] = grade_bare.group(1)
-
-    # --- Location: city that follows "NHS ... Trust," or "Hospital," ---
+    # ── Location — city/region that follows "Trust," ──────────────────────────
     loc_m = re.search(
-        r"(?:NHS[^,\n]+?(?:Trust|Hospital)|Foundation Trust)[,\s]+([A-Z][A-Za-z\s\-]+?)(?=\s*(?:Specialit|Salary|$))",
+        r"Trust[,\s]+([A-Z][A-Za-z0-9\s&,\-]+?)(?=Specialit|Salary|$)",
         raw, re.I
     )
     if loc_m:
-        result["location"] = loc_m.group(1).strip().rstrip(",")
+        result["location"] = loc_m.group(1).strip().rstrip(",").strip()
 
-    # --- Title: everything before the first grade token / trust / salary marker ---
-    cutoff = len(raw)
-    for pattern in [
-        r"\s*\([A-Z]{2}\d\)",                         # (ST3) grade in parens
-        r"\b(?:NHS|Foundation Trust|Hospital Trust)\b",
-        r"\bSpecialit(?:y|ies)\b",
-        r"\bSalary\b",
-    ]:
-        m = re.search(pattern, raw, re.I)
-        if m and m.start() < cutoff:
-            cutoff = m.start()
+    # ── Grade ─────────────────────────────────────────────────────────────────
+    # Form A: "NHS Medical & Dental: Specialty Doctor" — match known grade token after colon
+    grade_nhs = re.search(
+        r"NHS\s+(?:Medical|Dental)[^:]*:\s*(" +
+        "|".join(re.escape(g) for g in _GRADE_TOKENS) +
+        r")",
+        raw, re.I
+    )
+    if grade_nhs:
+        result["grade"] = grade_nhs.group(1).strip()
+    else:
+        # Form B: parenthesised token e.g. (ST3) or (CT1)
+        paren_m = re.search(r"\(([A-Z]{2}\d)\)", raw, re.I)
+        if paren_m:
+            result["grade"] = paren_m.group(1)
 
-    raw_title = raw[:cutoff].strip().rstrip(",").strip()
-    # Remove trailing bare grade token if still present
-    for g in _GRADE_TOKENS:
-        raw_title = re.sub(r"\s*\b" + re.escape(g) + r"\b\s*$", "", raw_title, flags=re.I).strip()
-    result["title"] = raw_title or None
+    # ── Title — everything before the first known section marker ──────────────
+    # Markers: "NHS Medical/Dental" grade label, or parenthesised grade "(ST3)"
+    title_markers = []
+    nhs_label_m = re.search(r"NHS\s+(?:Medical|Dental)", raw, re.I)
+    if nhs_label_m:
+        title_markers.append(nhs_label_m.start())
+    paren_m2 = re.search(r"\([A-Z]{2}\d\)", raw, re.I)
+    if paren_m2:
+        title_markers.append(paren_m2.start())
+
+    if title_markers:
+        result["title"] = raw[:min(title_markers)].strip().rstrip(",").strip() or None
+    else:
+        # Last resort: cut at the trust name
+        trust_m = re.search(
+            r"[A-Z][\w\s&]+(?:NHS|Foundation)\s+(?:Foundation\s+)?Trust", raw, re.I
+        )
+        result["title"] = (
+            raw[:trust_m.start()].strip().rstrip(",").strip() if trust_m else raw.strip()
+        )
 
     return result
 
 
-def parse_detail_soup(soup: BeautifulSoup) -> dict:
+def _parse_nhsjobs_detail(soup: BeautifulSoup) -> dict:
     """
-    Extract title, location, salary and grade from a job detail page.
+    Dedicated parser for jobs.nhs.uk detail pages.
 
-    For HealthJobsUK the <h1> contains everything concatenated — detected by
-    the presence of 'Salary' or 'NHS' inside the h1 text and handled by
-    _split_healthjobsuk_h1().
-
-    For all other sites four generic strategies are tried:
-      1. <dl> / <dt> + <dd> pairs
-      2. <table> <th>/<td> rows
-      3. <li> with bold/strong label
-      4. <p>/<div>/<span> with "label: value" text
+    Those pages have:
+      • A clean <h1> with just the job title (no concatenation)
+      • Structured <dl>/<dt>/<dd> blocks containing location, salary, grade etc.
+      • Fallback <li> rows with labeled <span> children
     """
     result = {"title": None, "location": None, "salary": None, "grade": None}
 
     h1 = soup.find("h1")
-    raw_h1 = _scrub(h1.get_text()) if h1 else ""
-
-    # Detect concatenated HealthJobsUK h1 (contains embedded Salary: or NHS Trust)
-    if raw_h1 and (re.search(r"Salary\s*:", raw_h1, re.I) or
-                   re.search(r"\bNHS\b|\bFoundation Trust\b", raw_h1, re.I)):
-        parsed = _split_healthjobsuk_h1(raw_h1)
-        result.update({k: v for k, v in parsed.items() if v})
-    else:
-        result["title"] = raw_h1 or None
+    if h1:
+        result["title"] = _scrub(h1.get_text())
 
     def try_fill(label_raw: str, value_raw: str):
-        label = label_raw.strip().rstrip(":").strip()
+        label = _scrub(label_raw).rstrip(":")
         value = _scrub(value_raw)
         if not value:
             return
@@ -298,40 +296,97 @@ def parse_detail_soup(soup: BeautifulSoup) -> dict:
         if result["grade"] is None and _match_label(label, _GRADE_LABELS):
             result["grade"] = value
 
-    # Strategy 1: <dl> <dt>/<dd> pairs
+    # Primary: <dl> <dt>/<dd> pairs (main structure on jobs.nhs.uk)
     for dl in soup.find_all("dl"):
         for dt, dd in zip(dl.find_all("dt"), dl.find_all("dd")):
-                               
-                                    
             try_fill(dt.get_text(), dd.get_text())
 
-    # Strategy 2: <table> rows
+    # Secondary: <li> rows with two <span> children (label + value)
+    for li in soup.find_all("li"):
+        spans = li.find_all(["span", "strong", "b"])
+        if len(spans) >= 2:
+            try_fill(spans[0].get_text(), spans[1].get_text())
+        elif len(spans) == 1:
+            try_fill(spans[0].get_text(),
+                     li.get_text().replace(spans[0].get_text(), "", 1))
+
+    # Fallback: shallow "label: value" elements
+    for tag in soup.find_all(["p", "div"]):
+        if tag.find(["p", "div", "table", "ul", "dl"]):
+            continue
+        text = tag.get_text()
+        if ":" in text:
+            parts = text.split(":", 1)
+            if len(parts[0].split()) <= 4:
+                try_fill(parts[0], parts[1])
+
+    return result
+
+
+def parse_detail_soup(soup: BeautifulSoup, site: str = "") -> dict:
+    """
+    Route to the correct detail parser based on the URL of the page being parsed.
+
+    - jobs.nhs.uk  → _parse_nhsjobs_detail  (clean h1 + structured dl)
+    - healthjobsuk → _split_healthjobsuk_h1 (concatenated h1 blob)
+    - everything else (HSCNI, Scotland) → four generic strategies
+    """
+    # ── NHS Jobs ──────────────────────────────────────────────────────────────
+    if "jobs.nhs.uk" in site:
+        return _parse_nhsjobs_detail(soup)
+
+    result = {"title": None, "location": None, "salary": None, "grade": None}
+    h1 = soup.find("h1")
+    raw_h1 = _scrub(h1.get_text()) if h1 else ""
+
+    # ── HealthJobsUK — concatenated h1 ───────────────────────────────────────
+    if raw_h1 and (
+        re.search(r"Salary\s*:", raw_h1, re.I) or
+        re.search(r"NHS|Foundation Trust", raw_h1, re.I)
+    ):
+        parsed = _split_healthjobsuk_h1(raw_h1)
+        result.update({k: v for k, v in parsed.items() if v})
+        return result
+
+    # ── Generic (HSCNI, Scotland, etc.) ──────────────────────────────────────
+    result["title"] = raw_h1 or None
+
+    def try_fill(label_raw: str, value_raw: str):
+        label = _scrub(label_raw).rstrip(":")
+        value = _scrub(value_raw)
+        if not value:
+            return
+        if result["location"] is None and _match_label(label, _LOCATION_LABELS):
+            result["location"] = value
+        if result["salary"] is None and _match_label(label, _SALARY_LABELS):
+            result["salary"] = value
+        if result["grade"] is None and _match_label(label, _GRADE_LABELS):
+            result["grade"] = value
+
+    for dl in soup.find_all("dl"):
+        for dt, dd in zip(dl.find_all("dt"), dl.find_all("dd")):
+            try_fill(dt.get_text(), dd.get_text())
+
     for table in soup.find_all("table"):
         for row in table.find_all("tr"):
             cells = row.find_all(["th", "td"])
             if len(cells) >= 2:
                 try_fill(cells[0].get_text(), cells[1].get_text())
 
-    # Strategy 3: <li> with bold/strong label
     for li in soup.find_all("li"):
         strong = li.find(["strong", "b"])
         if strong:
-                                     
-            try_fill(strong.get_text(), li.get_text().replace(strong.get_text(), "", 1))
-                                  
+            try_fill(strong.get_text(),
+                     li.get_text().replace(strong.get_text(), "", 1))
 
-    # Strategy 4: "label: value" in block elements
     for tag in soup.find_all(["p", "div", "span"]):
-        # Only consider shallow elements (no nested block tags) to avoid huge blobs
         if tag.find(["p", "div", "table", "ul"]):
             continue
         text = tag.get_text()
-                                     
         if ":" in text:
             parts = text.split(":", 1)
-            if len(parts[0].split()) <= 4:   # label should be short
+            if len(parts[0].split()) <= 4:
                 try_fill(parts[0], parts[1])
-                         
 
     return result
 
@@ -510,7 +565,7 @@ async def fetch_detail_info(context, link: str) -> dict | None:
             return None
         content = await page.content()
         soup = BeautifulSoup(content, "html.parser")
-        info = parse_detail_soup(soup)
+        info = parse_detail_soup(soup, site=link)
         log(f"      ↳ title={info['title']!r} | loc={info['location']!r} "
             f"| salary={info['salary']!r} | grade={info['grade']!r}")
         return info
