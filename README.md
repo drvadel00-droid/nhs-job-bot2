@@ -1,7 +1,3 @@
-Here’s a clean technical documentation for your script, organized like a README / developer documentation.
-
----
-
 # NHS Job Bot Scraper Documentation
 
 ## Overview
