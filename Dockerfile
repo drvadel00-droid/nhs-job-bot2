@@ -16,6 +16,7 @@ RUN playwright install chromium
 RUN pip uninstall playwright-stealth -y
 RUN pip install playwright-stealth==1.0.6
 RUN playwright install chromium && playwright install-deps chromium
+RUN pip install aiohttp
 
 COPY . .
 
