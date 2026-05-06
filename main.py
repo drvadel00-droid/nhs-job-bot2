@@ -16,6 +16,8 @@ PAGE_TIMEOUT = 20_000         # ms — fail fast; don't wait out a deliberate st
 DETAIL_TIMEOUT = 15_000       # ms
 SITE_HARD_LIMIT = 300         # seconds — hard kill per URL task
 TELEGRAM_SEND_INTERVAL = 1.1  # slightly above Telegram's 1 msg/s/chat limit
+# ================= CONFIG ================= #
+MAX_CONCURRENT_BROWSERS = 3   # ← add this
 
 ua = UserAgent()
 
@@ -689,18 +691,21 @@ async def check_site(url: str, seen_jobs: set, playwright) -> int:
     return new_jobs
 
 # ================= PARALLEL CYCLE ================= #
+_browser_sem: asyncio.Semaphore | None = None   # initialised in main()
+
 async def _site_with_timeout(url: str, seen_jobs: set, playwright) -> int:
-    try:
-        return await asyncio.wait_for(
-            check_site(url, seen_jobs, playwright),
-            timeout=SITE_HARD_LIMIT,
-        )
-    except asyncio.TimeoutError:
-        log(f"⏰ Hard timeout ({SITE_HARD_LIMIT}s) hit for {url[:60]} — skipping.")
-        return 0
-    except Exception as e:
-        log(f"⚠️  Task error for {url[:60]}: {e}")
-        return 0
+    async with _browser_sem:                     # ← only MAX_CONCURRENT_BROWSERS at once
+        try:
+            return await asyncio.wait_for(
+                check_site(url, seen_jobs, playwright),
+                timeout=SITE_HARD_LIMIT,
+            )
+        except asyncio.TimeoutError:
+            log(f"⏰ Hard timeout ({SITE_HARD_LIMIT}s) hit for {url[:60]} — skipping.")
+            return 0
+        except Exception as e:
+            log(f"⚠️  Task error for {url[:60]}: {e}")
+            return 0
 
 
 async def run_cycle(seen_jobs: set, playwright):
@@ -712,10 +717,12 @@ async def run_cycle(seen_jobs: set, playwright):
 
 # ================= ENTRY POINT ================= #
 async def main():
+    global _browser_sem
+    _browser_sem = asyncio.Semaphore(MAX_CONCURRENT_BROWSERS)   # ← initialise here
+
     log("🚀 NHS JOB BOT STARTED")
     seen_jobs = load_seen()
     log(f"   Loaded {len(seen_jobs)} previously seen job IDs.")
-
     asyncio.create_task(telegram_consumer())
 
     async with async_playwright() as p:
