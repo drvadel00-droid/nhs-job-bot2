@@ -2,6 +2,8 @@ import asyncio
 import random
 import re
 import aiohttp
+import gc
+import resource
 from datetime import datetime
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, TimeoutError as PWTimeout
@@ -16,8 +18,11 @@ PAGE_TIMEOUT = 20_000         # ms — fail fast; don't wait out a deliberate st
 DETAIL_TIMEOUT = 15_000       # ms
 SITE_HARD_LIMIT = 300         # seconds — hard kill per URL task
 TELEGRAM_SEND_INTERVAL = 1.1  # slightly above Telegram's 1 msg/s/chat limit
-# ================= CONFIG ================= #
+                                              
 MAX_CONCURRENT_BROWSERS = 3   # ← add this
+MAX_CONCURRENT_BROWSERS = 3
+PLAYWRIGHT_RECYCLE_EVERY = 10   # restart Playwright context every N cycles
+
 
 ua = UserAgent()
 
@@ -718,25 +723,44 @@ async def run_cycle(seen_jobs: set, playwright):
 # ================= ENTRY POINT ================= #
 async def main():
     global _browser_sem
-    _browser_sem = asyncio.Semaphore(MAX_CONCURRENT_BROWSERS)   # ← initialise here
+                                                                                     
+
+    # Raise the per-process thread limit as high as the OS allows
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_NPROC)
+        resource.setrlimit(resource.RLIMIT_NPROC, (hard, hard))
+        log(f"   RLIMIT_NPROC raised to {hard}")
+    except Exception as e:
+        log(f"   Could not raise RLIMIT_NPROC: {e}")
+
+    _browser_sem = asyncio.Semaphore(MAX_CONCURRENT_BROWSERS)
 
     log("🚀 NHS JOB BOT STARTED")
     seen_jobs = load_seen()
     log(f"   Loaded {len(seen_jobs)} previously seen job IDs.")
     asyncio.create_task(telegram_consumer())
 
-    async with async_playwright() as p:
-        cycle = 0
-        while True:
-            cycle += 1
-            log(f"─── CYCLE {cycle} ───────────────────────────────")
-            try:
-                await run_cycle(seen_jobs, p)
-            except Exception as e:
-                log(f"🔥 Cycle-level error (will continue): {e}")
-            log(f"💤 Sleeping {CHECK_INTERVAL}s …\n")
-            await asyncio.sleep(CHECK_INTERVAL)
+    cycle = 0
+    while True:
+        # Recycle the entire Playwright context every N cycles
+        async with async_playwright() as p:
+            for _ in range(PLAYWRIGHT_RECYCLE_EVERY):
+                   
+                cycle += 1
+                log(f"─── CYCLE {cycle} ───────────────────────────────")
+                try:
+                    await run_cycle(seen_jobs, p)
+                except Exception as e:
+                    log(f"🔥 Cycle-level error (will continue): {e}")
+                                                         
+                                               
 
+                log(f"💤 Sleeping {CHECK_INTERVAL}s …\n")
+                await asyncio.sleep(CHECK_INTERVAL)
+
+            log(f"♻️  Recycling Playwright after {PLAYWRIGHT_RECYCLE_EVERY} cycles…")
+            gc.collect()
+            await asyncio.sleep(3)   # give the OS time to reap processes
 
 if __name__ == "__main__":
     asyncio.run(main())
