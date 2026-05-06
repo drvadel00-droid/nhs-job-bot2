@@ -14,15 +14,12 @@ from fake_useragent import UserAgent
 BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"
 CHAT_ID = "-1003888963521"
 CHECK_INTERVAL = 120          # seconds between full cycles
-PAGE_TIMEOUT = 20_000         # ms — fail fast; don't wait out a deliberate stall
+PAGE_TIMEOUT = 20_000         # ms
 DETAIL_TIMEOUT = 15_000       # ms
 SITE_HARD_LIMIT = 300         # seconds — hard kill per URL task
-TELEGRAM_SEND_INTERVAL = 1.1  # slightly above Telegram's 1 msg/s/chat limit
-                                              
-MAX_CONCURRENT_BROWSERS = 3   # ← add this
-MAX_CONCURRENT_BROWSERS = 3
-PLAYWRIGHT_RECYCLE_EVERY = 10   # restart Playwright context every N cycles
-
+TELEGRAM_SEND_INTERVAL = 1.1
+MAX_CONCURRENT_CONTEXTS = 3   # concurrent contexts inside the ONE shared browser
+PLAYWRIGHT_RECYCLE_EVERY = 10 # recreate browser every N cycles
 
 ua = UserAgent()
 
@@ -106,11 +103,6 @@ async def async_save_seen(job_id: str):
 _tg_queue: asyncio.Queue = asyncio.Queue()
 
 async def telegram_consumer():
-    """
-    Fully async Telegram sender using aiohttp — never blocks the event loop.
-    Paces sends at TELEGRAM_SEND_INTERVAL seconds to respect the 1 msg/s/chat limit.
-    On 429, honours the exact retry_after Telegram returns.
-    """
     api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     async with aiohttp.ClientSession() as session:
         while True:
@@ -118,7 +110,6 @@ async def telegram_consumer():
             if msg is None:
                 _tg_queue.task_done()
                 break
-
             payload = {"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"}
             backoff = 5
             for attempt in range(5):
@@ -133,7 +124,7 @@ async def telegram_consumer():
                         elif r.status == 429:
                             body = await r.json()
                             wait = body.get("parameters", {}).get("retry_after", backoff)
-                            log(f"⚠️  Telegram 429 — honouring retry_after={wait}s")
+                            log(f"⚠️  Telegram 429 — retry_after={wait}s")
                             await asyncio.sleep(wait)
                             backoff = max(backoff * 2, wait + 1)
                         else:
@@ -148,7 +139,6 @@ async def telegram_consumer():
                     log(f"❌ Telegram exception: {e}")
                     await asyncio.sleep(backoff)
                     backoff *= 2
-
             _tg_queue.task_done()
             await asyncio.sleep(TELEGRAM_SEND_INTERVAL)
 
@@ -166,10 +156,6 @@ def relevant_job(title: str) -> bool:
         return False
     return True
 
-def relevant_job_scotland(title: str) -> bool:
-    """Scotland uses the same grade/specialty/exclude filter as all other sites."""
-    return relevant_job(title)
-
 def extract_job_id(link: str) -> str:
     m = re.search(r"\d{4,}", link)
     return m.group() if m else link
@@ -186,11 +172,9 @@ def get_base(url: str) -> str:
     return m.group(1) if m else ""
 
 def txt(el) -> str:
-    """Safe whitespace-collapsed get_text()."""
     return " ".join(el.get_text().split()) if el else ""
 
 def sel_txt(parent, selector: str) -> str:
-    """Select first match and return its collapsed text, or ''."""
     el = parent.select_one(selector)
     return txt(el) if el else ""
 
@@ -218,17 +202,27 @@ async def random_mouse_move(page):
         pass
 
 # ================= BROWSER FACTORY ================= #
-async def create_context(playwright):
-    browser = await playwright.chromium.launch(
+# KEY CHANGE: one shared browser process per cycle.
+# Each URL task creates its own *context* (isolated cookies/storage)
+# inside that single process. Threads: ~80 total instead of ~80 × N.
+
+async def launch_browser(playwright):
+    """Launch a single Chromium process to be shared across all URL tasks."""
+    return await playwright.chromium.launch(
         headless=True,
         args=[
-            "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
             "--disable-setuid-sandbox",
             "--disable-blink-features=AutomationControlled",
             "--disable-infobars",
             "--window-size=1920,1080",
         ],
     )
+
+async def new_context(browser):
+    """Create an isolated browser context (like an incognito window) inside the shared browser."""
     vp = random.choice(VIEWPORTS)
     ctx = await browser.new_context(
         user_agent=ua.random,
@@ -248,21 +242,13 @@ async def create_context(playwright):
         Object.defineProperty(navigator, 'languages', { get: () => ['en-GB','en'] });
         window.chrome = { runtime: {} };
     """)
-    return browser, ctx
+    return ctx
 
 # ================= GOTO WITH RETRY ================= #
-# Strategy:
-#   Attempt 1: "domcontentloaded" — fires once HTML is parsed. Fast on cooperative
-#              sites; times out quickly (20s) on bot-blocking ones.
-#   Attempt 2: "commit" — fires the instant any response bytes arrive. Gets us
-#              something to parse even from sites that keep connections open to stall.
-#   Between retries: flat 2s pause. Exponential backoff is useless against deliberate
-#   bot-detection — the site won't unblock you in 20 seconds regardless.
 _WAIT_STRATEGIES = ["domcontentloaded", "commit"]
 
 async def goto_with_retry(page, url: str, retries: int = 2,
                           timeout: int = PAGE_TIMEOUT) -> bool:
-               
     for attempt in range(1, retries + 1):
         strategy = _WAIT_STRATEGIES[min(attempt - 1, len(_WAIT_STRATEGIES) - 1)]
         try:
@@ -272,35 +258,20 @@ async def goto_with_retry(page, url: str, retries: int = 2,
             if resp and resp.status == 403:
                 log(f"⛔ 403 on {url[:70]} (attempt {attempt}).")
                 await asyncio.sleep(2)
-                            
             elif resp:
                 log(f"⚠️  HTTP {resp.status} on {url[:70]} (attempt {attempt}).")
                 return False
         except PWTimeout:
             log(f"⏱️  Timeout [{strategy}] on {url[:70]} (attempt {attempt}).")
             await asyncio.sleep(2)
-                        
         except Exception as e:
             log(f"❌ Nav error {url[:70]}: {e} (attempt {attempt}).")
             await asyncio.sleep(2)
-                        
     return False
 
 # ================= SITE-SPECIFIC PARSERS ================= #
 
 def parse_nhsjobs(soup: BeautifulSoup, base: str) -> list[dict]:
-    """
-    Extracts all fields from listing-page cards — no detail visit needed.
-
-    HTML structure (jobs.nhs.uk):
-      <li data-test="search-result">
-        <a data-test="search-result-job-title">            ← title + href
-        <div data-test="search-result-location">
-          <h3> employer <div class="location-font-size">  ← employer / location
-        <li data-test="search-result-salary">     <strong> ← salary
-        <li data-test="search-result-closingDate"> <strong> ← closing date
-        <li data-test="search-result-jobType">     <strong> ← contract type
-    """
     jobs = []
     for card in soup.select("li[data-test='search-result']"):
         a = card.select_one("a[data-test='search-result-job-title']")
@@ -310,7 +281,6 @@ def parse_nhsjobs(soup: BeautifulSoup, base: str) -> list[dict]:
         title = txt(a)
         if not title or not href:
             continue
-
         loc_block = card.select_one("[data-test='search-result-location']")
         employer = location = ""
         if loc_block:
@@ -321,80 +291,42 @@ def parse_nhsjobs(soup: BeautifulSoup, base: str) -> list[dict]:
                     location = txt(loc_div)
                     loc_div.extract()
                 employer = txt(h3)
-
         def strong(test: str) -> str:
             li = card.select_one(f"li[data-test='{test}']")
             return txt(li.find("strong")) if li and li.find("strong") else ""
-
         jobs.append({
-            "title":        title,
-            "link":         href,
-            "employer":     employer,
-            "location":     location,
-            "salary":       strong("search-result-salary"),
+            "title": title, "link": href, "employer": employer,
+            "location": location, "salary": strong("search-result-salary"),
             "closing_date": strong("search-result-closingDate"),
-            "contract":     strong("search-result-jobType"),
-            "needs_detail": False,
-            "site":         "nhsjobs",
+            "contract": strong("search-result-jobType"),
+            "needs_detail": False, "site": "nhsjobs",
         })
     return jobs
 
 
 def parse_healthjobsuk(soup: BeautifulSoup, base: str) -> list[dict]:
-    """
-    Extracts fields from listing cards — no detail visit needed.
-
-    HTML structure (healthjobsuk.com):
-      <li class="hj-job …">
-        <a href="/job/…" title="…">                       ← link (title attr = job title)
-          <div class="hj-jobtitle …">                     ← job title text
-          <div class="hj-grade …">                        ← grade
-          <div class="hj-employername …">                 ← employer name
-          <div class="hj-locationtown …">                 ← location
-          <div class="hj-primaryspeciality …">            ← speciality
-          <div class="hj-salary …">                       ← salary
-    """
     jobs = []
     for li in soup.select("li.hj-job"):
         a = li.find("a", href=True)
         if not a:
             continue
         href  = normalize_link(a["href"], base)
-
-        # Title: prefer the dedicated div, fall back to the <a> title attribute
         title = sel_txt(li, ".hj-jobtitle") or a.get("title", "").strip()
         if not title:
             continue
-
         jobs.append({
-            "title":      title,
-            "link":       href,
-            "grade":      sel_txt(li, ".hj-grade"),
-            "employer":   sel_txt(li, ".hj-employername"),
-            "location":   sel_txt(li, ".hj-locationtown"),
+            "title": title, "link": href,
+            "grade": sel_txt(li, ".hj-grade"),
+            "employer": sel_txt(li, ".hj-employername"),
+            "location": sel_txt(li, ".hj-locationtown"),
             "speciality": sel_txt(li, ".hj-primaryspeciality"),
-            "salary":     sel_txt(li, ".hj-salary"),
-            # Closing date is not present on the listing page for this site
-            "needs_detail": False,
-            "site":         "healthjobsuk",
+            "salary": sel_txt(li, ".hj-salary"),
+            "needs_detail": False, "site": "healthjobsuk",
         })
     return jobs
 
 
 def parse_hscni(soup: BeautifulSoup, base: str) -> list[dict]:
-    """
-    Extracts fields from listing cards — no detail visit needed.
-
-    HTML structure (jobs.hscni.net):
-      <article class="job-result …" data-id="…">
-        <h2><a href="/Job/…">                             ← title + link
-        <span class="job-ref …">Ref: …</span>            ← reference
-        <ul class="job-overview">
-          <li><strong>Salary: </strong>…                  ← salary
-          <li><strong>Location: </strong>…                ← location
-          <li><strong>Contract Type: </strong>…           ← contract
-        <div class="job-closing"><strong>Closing:</strong> … ← closing date
-    """
     jobs = []
     for article in soup.select("article.job-result"):
         a = article.select_one("h2 a")
@@ -404,24 +336,16 @@ def parse_hscni(soup: BeautifulSoup, base: str) -> list[dict]:
         title = txt(a)
         if not title or not href:
             continue
-
-        # Reference number (strip leading "Ref: ")
         ref_el = article.select_one(".job-ref")
         ref = txt(ref_el).replace("Ref:", "").strip() if ref_el else ""
-
-        # Overview list items — keyed by their <strong> label
         overview: dict = {}
         for li in article.select("ul.job-overview li"):
             strong = li.find("strong")
             if not strong:
                 continue
             label = txt(strong).rstrip(":").lower()
-            # Value = everything after the <strong>
             strong.extract()
-            value = txt(li)
-            overview[label] = value
-
-        # Closing date lives in its own div
+            overview[label] = txt(li)
         closing_div = article.select_one(".job-closing")
         closing_date = ""
         if closing_div:
@@ -429,39 +353,18 @@ def parse_hscni(soup: BeautifulSoup, base: str) -> list[dict]:
             if strong:
                 strong.extract()
             closing_date = txt(closing_div)
-
         jobs.append({
-            "title":        title,
-            "link":         href,
-            "ref":          ref,
-            "salary":       overview.get("salary", ""),
-            "location":     overview.get("location", ""),
-            "contract":     overview.get("contract type", ""),
+            "title": title, "link": href, "ref": ref,
+            "salary": overview.get("salary", ""),
+            "location": overview.get("location", ""),
+            "contract": overview.get("contract type", ""),
             "closing_date": closing_date,
-            "needs_detail": False,
-            "site":         "hscni",
+            "needs_detail": False, "site": "hscni",
         })
     return jobs
 
 
 def parse_scotland(soup: BeautifulSoup, base: str) -> list[dict]:
-    """
-    Extracts fields from listing cards — no detail visit needed.
-
-    HTML structure (apply.jobs.scot.nhs.uk):
-      <div class="card-body …">
-        <a href="/Job/JobDetail?JobId=…">                 ← title + link
-        <p class="jobreference"><strong>Job reference:</strong> …
-        <p class="salary"><strong>Salary:</strong> …
-        <p class="closingdate"><strong>Closing date:</strong> …
-        <p class="department"><strong>Job Family:</strong> …
-        <p class="location"><strong>Location:</strong> …
-        <p class="employmenttype"><strong>Employment type:</strong> …
-        <p class="hours"><strong>Hours per week:</strong> …
-        <p class="school"><strong>Employer (NHS Board):</strong> …
-        <p class="shift"><strong>Department:</strong> …
-
-    """
     seen: set = set()
     jobs = []
     for card in soup.select("div.card-body"):
@@ -470,19 +373,12 @@ def parse_scotland(soup: BeautifulSoup, base: str) -> list[dict]:
             continue
         href  = normalize_link(a.get("href", ""), base)
         title = txt(a)
-
-        # Deduplicate by JobId
         m = re.search(r"JobId=(\d+)", href)
         uid = m.group(1) if m else href
         if uid in seen:
             continue
         seen.add(uid)
-
         def detail(css_class: str) -> str:
-            """
-            Each detail row is a <p class="jobdetailsitem <css_class>">.
-            The value is the text after stripping the <strong> label.
-            """
             p = card.select_one(f"p.{css_class}")
             if not p:
                 return ""
@@ -490,21 +386,18 @@ def parse_scotland(soup: BeautifulSoup, base: str) -> list[dict]:
             if strong:
                 strong.extract()
             return txt(p)
-
         jobs.append({
-            "title":           title,
-            "link":            href,
-            "ref":             detail("jobreference"),
-            "salary":          detail("salary"),
-            "closing_date":    detail("closingdate"),
-            "job_family":      detail("department"),      # "Job Family" field
-            "location":        detail("location"),
+            "title": title, "link": href,
+            "ref": detail("jobreference"),
+            "salary": detail("salary"),
+            "closing_date": detail("closingdate"),
+            "job_family": detail("department"),
+            "location": detail("location"),
             "employment_type": detail("employmenttype"),
-            "hours":           detail("hours"),
-            "employer":        detail("school"),          # "Employer (NHS Board)"
-            "department":      detail("shift"),           # "Department" field
-            "needs_detail":    False,
-            "site":            "scotland",
+            "hours": detail("hours"),
+            "employer": detail("school"),
+            "department": detail("shift"),
+            "needs_detail": False, "site": "scotland",
         })
     return jobs
 
@@ -528,30 +421,10 @@ def get_parser(url: str):
     if "jobs.scot.nhs.uk" in url: return parse_scotland
     return parse_generic
 
-# ================= DETAIL-PAGE FETCH (fallback only) ================= #
-async def fetch_detail_title(context, link: str) -> str:
-    """Used only by sites that still need a detail page visit (none currently)."""
-    page = await context.new_page()
-    try:
-        await stealth_async(page)
-        await asyncio.sleep(random.uniform(1.0, 2.5))
-        ok = await goto_with_retry(page, link, retries=2, timeout=DETAIL_TIMEOUT)
-        if not ok:
-            return ""
-        soup = BeautifulSoup(await page.content(), "html.parser")
-        h1 = soup.find("h1")
-        return txt(h1) if h1 else ""
-    except Exception as e:
-        log(f"Detail fetch error ({link}): {e}")
-        return ""
-    finally:
-        await page.close()
-
 # ================= MESSAGE FORMATTERS ================= #
 
 def format_nhsjobs(job: dict) -> str:
-    lines = ["🚨 <b>NEW NHS JOB — England</b>\n",
-             f"🏥 <b>{job['title']}</b>"]
+    lines = ["🚨 <b>NEW NHS JOB — England</b>\n", f"🏥 <b>{job['title']}</b>"]
     if job.get("employer"):     lines.append(f"🏢 {job['employer']}")
     if job.get("location"):     lines.append(f"📍 {job['location']}")
     if job.get("salary"):       lines.append(f"💷 {job['salary']}")
@@ -560,10 +433,8 @@ def format_nhsjobs(job: dict) -> str:
     lines.append(f"🔗 {job['link']}")
     return "\n".join(lines)
 
-
 def format_healthjobsuk(job: dict) -> str:
-    lines = ["🚨 <b>NEW NHS JOB — HealthJobsUK</b>\n",
-             f"🏥 <b>{job['title']}</b>"]
+    lines = ["🚨 <b>NEW NHS JOB — HealthJobsUK</b>\n", f"🏥 <b>{job['title']}</b>"]
     if job.get("grade"):        lines.append(f"🎓 {job['grade']}")
     if job.get("employer"):     lines.append(f"🏢 {job['employer']}")
     if job.get("location"):     lines.append(f"📍 {job['location']}")
@@ -572,10 +443,8 @@ def format_healthjobsuk(job: dict) -> str:
     lines.append(f"🔗 {job['link']}")
     return "\n".join(lines)
 
-
 def format_hscni(job: dict) -> str:
-    lines = ["🚨 <b>NEW NHS JOB — Northern Ireland</b>\n",
-             f"🏥 <b>{job['title']}</b>"]
+    lines = ["🚨 <b>NEW NHS JOB — Northern Ireland</b>\n", f"🏥 <b>{job['title']}</b>"]
     if job.get("ref"):          lines.append(f"🔖 Ref: {job['ref']}")
     if job.get("location"):     lines.append(f"📍 {job['location']}")
     if job.get("salary"):       lines.append(f"💷 {job['salary']}")
@@ -584,10 +453,8 @@ def format_hscni(job: dict) -> str:
     lines.append(f"🔗 {job['link']}")
     return "\n".join(lines)
 
-
 def format_scotland(job: dict) -> str:
-    lines = ["🚨 <b>NEW NHS JOB — Scotland</b>\n",
-             f"🏥 <b>{job['title']}</b>"]
+    lines = ["🚨 <b>NEW NHS JOB — Scotland</b>\n", f"🏥 <b>{job['title']}</b>"]
     if job.get("employer"):        lines.append(f"🏢 {job['employer']}")
     if job.get("location"):        lines.append(f"📍 {job['location']}")
     if job.get("department"):      lines.append(f"🏨 {job['department']}")
@@ -600,14 +467,12 @@ def format_scotland(job: dict) -> str:
     lines.append(f"🔗 {job['link']}")
     return "\n".join(lines)
 
-
 def format_message(job: dict) -> str:
     site = job.get("site", "generic")
-    if site == "nhsjobs":     return format_nhsjobs(job)
+    if site == "nhsjobs":      return format_nhsjobs(job)
     if site == "healthjobsuk": return format_healthjobsuk(job)
     if site == "hscni":        return format_hscni(job)
     if site == "scotland":     return format_scotland(job)
-    # Generic fallback
     lines = [f"🚨 <b>NEW NHS JOB</b>\n", f"🏥 <b>{job['title']}</b>"]
     if job.get("location"): lines.append(f"📍 {job['location']}")
     if job.get("salary"):   lines.append(f"💷 {job['salary']}")
@@ -615,20 +480,20 @@ def format_message(job: dict) -> str:
     return "\n".join(lines)
 
 # ================= SINGLE-URL SCRAPER ================= #
-async def check_site(url: str, seen_jobs: set, playwright) -> int:
+# Takes a shared browser; creates/destroys its own context only.
+
+async def check_site(url: str, seen_jobs: set, browser) -> int:
     log(f"🔍 Checking: {url}")
     new_jobs = 0
-    base     = get_base(url)
-    parser   = get_parser(url)
+    base   = get_base(url)
+    parser = get_parser(url)
 
-    browser = context = page = None
+    context = page = None
     try:
-        browser, context = await create_context(playwright)
+        context = await new_context(browser)
         page = await context.new_page()
         await stealth_async(page)
-        # Stagger startup: parallel tasks launching at the exact same millisecond
-        # from the same IP is a strong bot signal. Spread them over 0–8 seconds.
-        await asyncio.sleep(random.uniform(0, 8))
+        await asyncio.sleep(random.uniform(0, 5))   # stagger within the shared process
 
         if not await goto_with_retry(page, url):
             log(f"⛔ Giving up on {url}.")
@@ -651,23 +516,10 @@ async def check_site(url: str, seen_jobs: set, playwright) -> int:
                     if job_id in seen_jobs:
                         continue
 
-                # Fetch detail page when needed (currently no site requires this)
-                if job.get("needs_detail"):
-                    detail_title = await fetch_detail_title(context, link)
-                    if detail_title:
-                        job = {**job, "title": detail_title}
-                    await asyncio.sleep(random.uniform(0.8, 1.8))
-
-                # Apply the correct filter depending on the site
                 title = job.get("title", "")
-                if job.get("site") == "scotland":
-                    if not relevant_job_scotland(title):
-                        continue
-                else:
-                    if not title or not relevant_job(title):
-                        continue
+                if not title or not relevant_job(title):
+                    continue
 
-                # Atomic claim
                 async with _seen_lock:
                     if job_id in seen_jobs:
                         continue
@@ -686,7 +538,8 @@ async def check_site(url: str, seen_jobs: set, playwright) -> int:
     except Exception as e:
         log(f"❌ SCRAPER ERROR on {url}: {e}")
     finally:
-        for obj in (page, context, browser):
+        # Only close the lightweight context — never the shared browser
+        for obj in (page, context):
             if obj:
                 try:
                     await obj.close()
@@ -696,13 +549,13 @@ async def check_site(url: str, seen_jobs: set, playwright) -> int:
     return new_jobs
 
 # ================= PARALLEL CYCLE ================= #
-_browser_sem: asyncio.Semaphore | None = None   # initialised in main()
+_ctx_sem: asyncio.Semaphore | None = None   # caps concurrent contexts inside the browser
 
-async def _site_with_timeout(url: str, seen_jobs: set, playwright) -> int:
-    async with _browser_sem:                     # ← only MAX_CONCURRENT_BROWSERS at once
+async def _site_with_timeout(url: str, seen_jobs: set, browser) -> int:
+    async with _ctx_sem:
         try:
             return await asyncio.wait_for(
-                check_site(url, seen_jobs, playwright),
+                check_site(url, seen_jobs, browser),
                 timeout=SITE_HARD_LIMIT,
             )
         except asyncio.TimeoutError:
@@ -713,19 +566,18 @@ async def _site_with_timeout(url: str, seen_jobs: set, playwright) -> int:
             return 0
 
 
-async def run_cycle(seen_jobs: set, playwright):
-    log(f"🚀 Parallel cycle — {len(URLS)} URLs (hard limit {SITE_HARD_LIMIT}s each)…")
-    tasks   = [asyncio.create_task(_site_with_timeout(u, seen_jobs, playwright)) for u in URLS]
+async def run_cycle(seen_jobs: set, browser):
+    log(f"🚀 Cycle — {len(URLS)} URLs, {MAX_CONCURRENT_CONTEXTS} concurrent contexts…")
+    tasks   = [asyncio.create_task(_site_with_timeout(u, seen_jobs, browser)) for u in URLS]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     total   = sum(r for r in results if isinstance(r, int))
     log(f"✅ Cycle done — {total} new job(s) total.")
 
 # ================= ENTRY POINT ================= #
 async def main():
-    global _browser_sem
-                                                                                     
+    global _ctx_sem
 
-    # Raise the per-process thread limit as high as the OS allows
+    # Raise thread limit as high as the OS permits
     try:
         soft, hard = resource.getrlimit(resource.RLIMIT_NPROC)
         resource.setrlimit(resource.RLIMIT_NPROC, (hard, hard))
@@ -733,7 +585,7 @@ async def main():
     except Exception as e:
         log(f"   Could not raise RLIMIT_NPROC: {e}")
 
-    _browser_sem = asyncio.Semaphore(MAX_CONCURRENT_BROWSERS)
+    _ctx_sem = asyncio.Semaphore(MAX_CONCURRENT_CONTEXTS)
 
     log("🚀 NHS JOB BOT STARTED")
     seen_jobs = load_seen()
@@ -741,26 +593,30 @@ async def main():
     asyncio.create_task(telegram_consumer())
 
     cycle = 0
-    while True:
-        # Recycle the entire Playwright context every N cycles
-        async with async_playwright() as p:
-            for _ in range(PLAYWRIGHT_RECYCLE_EVERY):
-                   
-                cycle += 1
-                log(f"─── CYCLE {cycle} ───────────────────────────────")
+    async with async_playwright() as playwright:
+        while True:
+            # Launch ONE browser per recycle window, reuse it for N cycles
+            log("🌐 Launching shared browser…")
+            browser = await launch_browser(playwright)
+            try:
+                for _ in range(PLAYWRIGHT_RECYCLE_EVERY):
+                    cycle += 1
+                    log(f"─── CYCLE {cycle} ───────────────────────────────")
+                    try:
+                        await run_cycle(seen_jobs, browser)
+                    except Exception as e:
+                        log(f"🔥 Cycle-level error (will continue): {e}")
+                    log(f"💤 Sleeping {CHECK_INTERVAL}s …\n")
+                    await asyncio.sleep(CHECK_INTERVAL)
+            finally:
+                log(f"♻️  Closing browser after {PLAYWRIGHT_RECYCLE_EVERY} cycles…")
                 try:
-                    await run_cycle(seen_jobs, p)
-                except Exception as e:
-                    log(f"🔥 Cycle-level error (will continue): {e}")
-                                                         
-                                               
+                    await browser.close()
+                except Exception:
+                    pass
+                gc.collect()
+                await asyncio.sleep(5)   # let the OS fully reap the Chromium process
 
-                log(f"💤 Sleeping {CHECK_INTERVAL}s …\n")
-                await asyncio.sleep(CHECK_INTERVAL)
-
-            log(f"♻️  Recycling Playwright after {PLAYWRIGHT_RECYCLE_EVERY} cycles…")
-            gc.collect()
-            await asyncio.sleep(3)   # give the OS time to reap processes
 
 if __name__ == "__main__":
     asyncio.run(main())
