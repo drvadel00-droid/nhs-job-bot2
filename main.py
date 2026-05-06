@@ -137,15 +137,10 @@ async def telegram_consumer():
                     log(f"❌ Telegram send timed out (attempt {attempt + 1})")
                     await asyncio.sleep(backoff)
                     backoff *= 2
-                     
-                                                                             
-                         
                 except Exception as e:
                     log(f"❌ Telegram exception: {e}")
                     await asyncio.sleep(backoff)
                     backoff *= 2
-                             
-                                                   
 
             _tg_queue.task_done()
             await asyncio.sleep(TELEGRAM_SEND_INTERVAL)
@@ -164,12 +159,13 @@ def relevant_job(title: str) -> bool:
         return False
     return True
 
-# NOTE: Scotland jobs are NOT filtered through relevant_job().
-# The Scottish NHS uses different grade/title conventions and the filter
-# would incorrectly exclude valid roles. All Scotland jobs that pass the
-# basic HTML extraction are sent as-is.
+                                                              
+                                                                        
+                                                                        
+                                       
 def relevant_job_scotland(title: str) -> bool:
-    return bool(title and len(title) > 5)
+    """Scotland uses the same grade/specialty/exclude filter as all other sites."""
+    return relevant_job(title)
 
 def extract_job_id(link: str) -> str:
     m = re.search(r"\d{4,}", link)
@@ -254,10 +250,6 @@ async def create_context(playwright):
 # ================= GOTO WITH RETRY ================= #
 async def goto_with_retry(page, url: str, retries: int = 3,
                           timeout: int = PAGE_TIMEOUT) -> bool:
-       
-                                                                       
-                                                                      
-       
     backoff = 5
     for attempt in range(1, retries + 1):
         try:
@@ -286,24 +278,18 @@ async def goto_with_retry(page, url: str, retries: int = 3,
 def parse_nhsjobs(soup: BeautifulSoup, base: str) -> list[dict]:
     """
     Extracts all fields from listing-page cards — no detail visit needed.
-                                
 
     HTML structure (jobs.nhs.uk):
       <li data-test="search-result">
         <a data-test="search-result-job-title">            ← title + href
         <div data-test="search-result-location">
           <h3> employer <div class="location-font-size">  ← employer / location
-              
         <li data-test="search-result-salary">     <strong> ← salary
         <li data-test="search-result-closingDate"> <strong> ← closing date
-                                                                                              
         <li data-test="search-result-jobType">     <strong> ← contract type
-                                                                                                 
-           
     """
     jobs = []
     for card in soup.select("li[data-test='search-result']"):
-                                                                                                                                                                                       
         a = card.select_one("a[data-test='search-result-job-title']")
         if not a:
             continue
@@ -312,7 +298,6 @@ def parse_nhsjobs(soup: BeautifulSoup, base: str) -> list[dict]:
         if not title or not href:
             continue
 
-                                                                                                                                                                         
         loc_block = card.select_one("[data-test='search-result-location']")
         employer = location = ""
         if loc_block:
@@ -325,16 +310,8 @@ def parse_nhsjobs(soup: BeautifulSoup, base: str) -> list[dict]:
                 employer = txt(h3)
 
         def strong(test: str) -> str:
-                                                                           
-                                                                   
-
-                                                                                                                                                                                       
             li = card.select_one(f"li[data-test='{test}']")
             return txt(li.find("strong")) if li and li.find("strong") else ""
-
-                                                                                                                                                                                     
-                                                                          
-                                                                 
 
         jobs.append({
             "title":        title,
@@ -471,9 +448,9 @@ def parse_scotland(soup: BeautifulSoup, base: str) -> list[dict]:
         <p class="school"><strong>Employer (NHS Board):</strong> …
         <p class="shift"><strong>Department:</strong> …
 
-    NOTE: Scotland jobs bypass the standard grade/specialty filter
-    (relevant_job_scotland is used instead) because Scottish NHS uses
-    different titling conventions that the England/Wales keywords miss.
+                                                                  
+                                                                     
+                                                                       
     """
     seen: set = set()
     jobs = []
@@ -566,13 +543,9 @@ def format_nhsjobs(job: dict) -> str:
     lines = ["🚨 <b>NEW NHS JOB — England</b>\n",
              f"🏥 <b>{job['title']}</b>"]
     if job.get("employer"):     lines.append(f"🏢 {job['employer']}")
-                                               
     if job.get("location"):     lines.append(f"📍 {job['location']}")
-                                               
     if job.get("salary"):       lines.append(f"💷 {job['salary']}")
-                                             
     if job.get("closing_date"): lines.append(f"📅 Closes: {job['closing_date']}")
-                                                           
     if job.get("contract"):     lines.append(f"📋 {job['contract']}")
     lines.append(f"🔗 {job['link']}")
     return "\n".join(lines)
@@ -662,7 +635,6 @@ async def check_site(url: str, seen_jobs: set, playwright) -> int:
                 link   = job["link"]
                 job_id = extract_job_id(link)
 
-                                
                 async with _seen_lock:
                     if job_id in seen_jobs:
                         continue
@@ -711,13 +683,8 @@ async def check_site(url: str, seen_jobs: set, playwright) -> int:
 
     return new_jobs
 
-
 # ================= PARALLEL CYCLE ================= #
 async def _site_with_timeout(url: str, seen_jobs: set, playwright) -> int:
-       
-                                                                           
-                                                                           
-       
     try:
         return await asyncio.wait_for(
             check_site(url, seen_jobs, playwright),
@@ -738,14 +705,12 @@ async def run_cycle(seen_jobs: set, playwright):
     total   = sum(r for r in results if isinstance(r, int))
     log(f"✅ Cycle done — {total} new job(s) total.")
 
-
 # ================= ENTRY POINT ================= #
 async def main():
     log("🚀 NHS JOB BOT STARTED")
     seen_jobs = load_seen()
     log(f"   Loaded {len(seen_jobs)} previously seen job IDs.")
 
-                                                                                   
     asyncio.create_task(telegram_consumer())
 
     async with async_playwright() as p:
@@ -757,7 +722,6 @@ async def main():
                 await run_cycle(seen_jobs, p)
             except Exception as e:
                 log(f"🔥 Cycle-level error (will continue): {e}")
-
             log(f"💤 Sleeping {CHECK_INTERVAL}s …\n")
             await asyncio.sleep(CHECK_INTERVAL)
 
