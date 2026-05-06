@@ -12,8 +12,8 @@ from fake_useragent import UserAgent
 BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"
 CHAT_ID = "-1003888963521"
 CHECK_INTERVAL = 120          # seconds between full cycles
-PAGE_TIMEOUT = 45_000         # ms
-DETAIL_TIMEOUT = 20_000       # ms
+PAGE_TIMEOUT = 20_000         # ms — fail fast; don't wait out a deliberate stall
+DETAIL_TIMEOUT = 15_000       # ms
 SITE_HARD_LIMIT = 300         # seconds — hard kill per URL task
 TELEGRAM_SEND_INTERVAL = 1.1  # slightly above Telegram's 1 msg/s/chat limit
 
@@ -159,10 +159,6 @@ def relevant_job(title: str) -> bool:
         return False
     return True
 
-                                                              
-                                                                        
-                                                                        
-                                       
 def relevant_job_scotland(title: str) -> bool:
     """Scotland uses the same grade/specialty/exclude filter as all other sites."""
     return relevant_job(title)
@@ -248,29 +244,39 @@ async def create_context(playwright):
     return browser, ctx
 
 # ================= GOTO WITH RETRY ================= #
-async def goto_with_retry(page, url: str, retries: int = 3,
+# Strategy:
+#   Attempt 1: "domcontentloaded" — fires once HTML is parsed. Fast on cooperative
+#              sites; times out quickly (20s) on bot-blocking ones.
+#   Attempt 2: "commit" — fires the instant any response bytes arrive. Gets us
+#              something to parse even from sites that keep connections open to stall.
+#   Between retries: flat 2s pause. Exponential backoff is useless against deliberate
+#   bot-detection — the site won't unblock you in 20 seconds regardless.
+_WAIT_STRATEGIES = ["domcontentloaded", "commit"]
+
+async def goto_with_retry(page, url: str, retries: int = 2,
                           timeout: int = PAGE_TIMEOUT) -> bool:
-    backoff = 5
+               
     for attempt in range(1, retries + 1):
+        strategy = _WAIT_STRATEGIES[min(attempt - 1, len(_WAIT_STRATEGIES) - 1)]
         try:
-            resp = await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+            resp = await page.goto(url, wait_until=strategy, timeout=timeout)
             if resp and resp.status == 200:
                 return True
             if resp and resp.status == 403:
-                log(f"⛔ 403 on {url} (attempt {attempt}). Backing off {backoff}s.")
-                await asyncio.sleep(backoff)
-                backoff *= 2
+                log(f"⛔ 403 on {url[:70]} (attempt {attempt}).")
+                await asyncio.sleep(2)
+                            
             elif resp:
-                log(f"⚠️  HTTP {resp.status} on {url} (attempt {attempt}).")
+                log(f"⚠️  HTTP {resp.status} on {url[:70]} (attempt {attempt}).")
                 return False
         except PWTimeout:
-            log(f"⏱️  Timeout on {url} (attempt {attempt}). Retrying in {backoff}s.")
-            await asyncio.sleep(backoff)
-            backoff *= 2
+            log(f"⏱️  Timeout [{strategy}] on {url[:70]} (attempt {attempt}).")
+            await asyncio.sleep(2)
+                        
         except Exception as e:
-            log(f"❌ Nav error {url}: {e} (attempt {attempt}).")
-            await asyncio.sleep(backoff)
-            backoff *= 2
+            log(f"❌ Nav error {url[:70]}: {e} (attempt {attempt}).")
+            await asyncio.sleep(2)
+                        
     return False
 
 # ================= SITE-SPECIFIC PARSERS ================= #
@@ -448,9 +454,6 @@ def parse_scotland(soup: BeautifulSoup, base: str) -> list[dict]:
         <p class="school"><strong>Employer (NHS Board):</strong> …
         <p class="shift"><strong>Department:</strong> …
 
-                                                                  
-                                                                     
-                                                                       
     """
     seen: set = set()
     jobs = []
@@ -616,7 +619,9 @@ async def check_site(url: str, seen_jobs: set, playwright) -> int:
         browser, context = await create_context(playwright)
         page = await context.new_page()
         await stealth_async(page)
-        await asyncio.sleep(random.uniform(1.5, 4.0))
+        # Stagger startup: parallel tasks launching at the exact same millisecond
+        # from the same IP is a strong bot signal. Spread them over 0–8 seconds.
+        await asyncio.sleep(random.uniform(0, 8))
 
         if not await goto_with_retry(page, url):
             log(f"⛔ Giving up on {url}.")
