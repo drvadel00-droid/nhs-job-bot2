@@ -482,7 +482,7 @@ def format_message(job: dict) -> str:
 # ================= SINGLE-URL SCRAPER ================= #
 # Takes a shared browser; creates/destroys its own context only.
 
-async def check_site(url: str, seen_jobs: set, browser) -> int:
+async def check_site(url: str, seen_jobs: set, browser, is_first_cycle: bool = False) -> int:
     log(f"🔍 Checking: {url}")
     new_jobs = 0
     base   = get_base(url)
@@ -525,8 +525,11 @@ async def check_site(url: str, seen_jobs: set, browser) -> int:
                         continue
                     seen_jobs.add(job_id)
 
-                log(f"   🆕 NEW JOB [{job.get('site','?')}]: {title}")
-                enqueue_telegram(format_message(job))
+                if is_first_cycle:
+                    log(f"   👁️  SEEN (first cycle, no alert): {title}")
+                else:
+                    log(f"   🆕 NEW JOB [{job.get('site','?')}]: {title}")
+                    enqueue_telegram(format_message(job))
                 await async_save_seen(job_id)
                 new_jobs += 1
 
@@ -551,11 +554,11 @@ async def check_site(url: str, seen_jobs: set, browser) -> int:
 # ================= PARALLEL CYCLE ================= #
 _ctx_sem: asyncio.Semaphore | None = None   # caps concurrent contexts inside the browser
 
-async def _site_with_timeout(url: str, seen_jobs: set, browser) -> int:
+async def _site_with_timeout(url: str, seen_jobs: set, browser, is_first_cycle: bool = False) -> int:
     async with _ctx_sem:
         try:
             return await asyncio.wait_for(
-                check_site(url, seen_jobs, browser),
+                check_site(url, seen_jobs, browser, is_first_cycle),
                 timeout=SITE_HARD_LIMIT,
             )
         except asyncio.TimeoutError:
@@ -566,9 +569,10 @@ async def _site_with_timeout(url: str, seen_jobs: set, browser) -> int:
             return 0
 
 
-async def run_cycle(seen_jobs: set, browser):
-    log(f"🚀 Cycle — {len(URLS)} URLs, {MAX_CONCURRENT_CONTEXTS} concurrent contexts…")
-    tasks   = [asyncio.create_task(_site_with_timeout(u, seen_jobs, browser)) for u in URLS]
+async def run_cycle(seen_jobs: set, browser, is_first_cycle: bool = False):
+    label = " (first cycle — seeding seen list, no alerts)" if is_first_cycle else ""
+    log(f"🚀 Cycle — {len(URLS)} URLs, {MAX_CONCURRENT_CONTEXTS} concurrent contexts{label}…")
+    tasks   = [asyncio.create_task(_site_with_timeout(u, seen_jobs, browser, is_first_cycle)) for u in URLS]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     total   = sum(r for r in results if isinstance(r, int))
     log(f"✅ Cycle done — {total} new job(s) total.")
@@ -603,7 +607,7 @@ async def main():
                     cycle += 1
                     log(f"─── CYCLE {cycle} ───────────────────────────────")
                     try:
-                        await run_cycle(seen_jobs, browser)
+                        await run_cycle(seen_jobs, browser, is_first_cycle=(cycle == 1))
                     except Exception as e:
                         log(f"🔥 Cycle-level error (will continue): {e}")
                     log(f"💤 Sleeping {CHECK_INTERVAL}s …\n")
