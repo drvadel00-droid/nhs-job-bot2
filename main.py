@@ -42,7 +42,7 @@ URLS = [
 
 # ================= FILTERS ================= #
 MEDICAL_SPECIALTIES = [
-    "medicine", "acute", "internal", "general medicine",
+    "medicine", "acute", "internal", "general", "medicine",
     "surgery", "general surgery", "trauma", "orthopaedic",
     "plastic", "emergency", "cardiology", "respiratory",
     "gastro", "neurology", "paediatric", "haematology",
@@ -54,11 +54,11 @@ GRADE_KEYWORDS = [
     "ct1", "ct2", "ct3",
     "st1", "st2", "st3",
     "registrar",
-    "trust doctor", "trust grade",
-    "clinical fellow", "junior fellow", "junior clinical fellow",
-    "specialty doctor",
+    "trust", "doctor", "grade",
+    "clinical",  "fellow", 
+    "specialty",
     "junior",
-    "locum doctor",
+    "locum", "doctor", "teaching",
 ]
 
 EXCLUDE_KEYWORDS = [
@@ -69,7 +69,7 @@ EXCLUDE_KEYWORDS = [
     "lead", "scientist", "receptionist", "housekeeper",
     "cook", "clerk", "practitioner", "nutritionist",
     "nutrition", "coordinator", "therapist", "secretary",
-    "pharmacist", "matron", "worker",
+    "pharmacist", "matron", "worker", "pharmacy", "chief"
 ]
 
 VIEWPORTS = [
