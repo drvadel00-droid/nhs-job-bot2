@@ -12,7 +12,10 @@ from fake_useragent import UserAgent
 
 # ================= CONFIG ================= #
 BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"
-CHAT_ID = "-1003888963521"
+CHAT_ID         = "-1003888963521"   # group — receives alerts with 5-min delay
+EARLY_CHAT_ID   = "-5080572458"       # personal — receives alerts immediately (5 min early)
+EARLY_DELAY     = 300                # seconds the group waits after the personal alert
+
 CHECK_INTERVAL = 120          # seconds between full cycles
 PAGE_TIMEOUT = 20_000         # ms
 DETAIL_TIMEOUT = 15_000       # ms
@@ -100,50 +103,76 @@ async def async_save_seen(job_id: str):
             f.write(job_id + "\n")
 
 # ================= TELEGRAM QUEUE ================= #
+# Each queue item is a (chat_id, message_text) tuple.
 _tg_queue: asyncio.Queue = asyncio.Queue()
 
-async def telegram_consumer():
+async def _send_one(session: aiohttp.ClientSession, chat_id: str, msg: str):
+    """Send a single message to one chat_id with retry/backoff logic."""
     api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": chat_id, "text": msg, "parse_mode": "HTML"}
+    backoff = 5
+    for attempt in range(5):
+        try:
+            async with session.post(
+                api_url, data=payload,
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as r:
+                if r.status == 200:
+                    log(f"✅ Telegram sent → {chat_id}")
+                    return
+                elif r.status == 429:
+                    body = await r.json()
+                    wait = body.get("parameters", {}).get("retry_after", backoff)
+                    log(f"⚠️  Telegram 429 (chat {chat_id}) — retry_after={wait}s")
+                    await asyncio.sleep(wait)
+                    backoff = max(backoff * 2, wait + 1)
+                else:
+                    text = await r.text()
+                    log(f"❌ Telegram HTTP {r.status} (chat {chat_id}): {text[:200]}")
+                    return
+        except asyncio.TimeoutError:
+            log(f"❌ Telegram send timed out (attempt {attempt + 1}, chat {chat_id})")
+            await asyncio.sleep(backoff)
+            backoff *= 2
+        except Exception as e:
+            log(f"❌ Telegram exception (chat {chat_id}): {e}")
+            await asyncio.sleep(backoff)
+            backoff *= 2
+
+
+async def telegram_consumer():
+    """
+    Drain _tg_queue.  Each item is (chat_id, text).
+    Items are placed here by enqueue_telegram(); the delayed group send
+    is handled separately via _schedule_group_send().
+    """
     async with aiohttp.ClientSession() as session:
         while True:
-            msg = await _tg_queue.get()
-            if msg is None:
+            item = await _tg_queue.get()
+            if item is None:
                 _tg_queue.task_done()
                 break
-            payload = {"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"}
-            backoff = 5
-            for attempt in range(5):
-                try:
-                    async with session.post(
-                        api_url, data=payload,
-                        timeout=aiohttp.ClientTimeout(total=10)
-                    ) as r:
-                        if r.status == 200:
-                            log("✅ Telegram sent")
-                            break
-                        elif r.status == 429:
-                            body = await r.json()
-                            wait = body.get("parameters", {}).get("retry_after", backoff)
-                            log(f"⚠️  Telegram 429 — retry_after={wait}s")
-                            await asyncio.sleep(wait)
-                            backoff = max(backoff * 2, wait + 1)
-                        else:
-                            text = await r.text()
-                            log(f"❌ Telegram HTTP {r.status}: {text[:200]}")
-                            break
-                except asyncio.TimeoutError:
-                    log(f"❌ Telegram send timed out (attempt {attempt + 1})")
-                    await asyncio.sleep(backoff)
-                    backoff *= 2
-                except Exception as e:
-                    log(f"❌ Telegram exception: {e}")
-                    await asyncio.sleep(backoff)
-                    backoff *= 2
+            chat_id, msg = item
+            await _send_one(session, chat_id, msg)
             _tg_queue.task_done()
             await asyncio.sleep(TELEGRAM_SEND_INTERVAL)
 
+
+async def _schedule_group_send(msg: str):
+    """Wait EARLY_DELAY seconds then drop the group message into the queue."""
+    await asyncio.sleep(EARLY_DELAY)
+    _tg_queue.put_nowait((CHAT_ID, msg))
+
+
 def enqueue_telegram(msg: str):
-    _tg_queue.put_nowait(msg)
+    """
+    1. Send immediately to the personal (early-alert) chat.
+    2. Schedule the group send EARLY_DELAY seconds later.
+    """
+    # Immediate personal alert
+    _tg_queue.put_nowait((EARLY_CHAT_ID, msg))
+    # Delayed group alert (fire-and-forget coroutine)
+    asyncio.create_task(_schedule_group_send(msg))
 
 # ================= FILTER LOGIC ================= #
 def relevant_job(title: str) -> bool:
@@ -202,10 +231,6 @@ async def random_mouse_move(page):
         pass
 
 # ================= BROWSER FACTORY ================= #
-# KEY CHANGE: one shared browser process per cycle.
-# Each URL task creates its own *context* (isolated cookies/storage)
-# inside that single process. Threads: ~80 total instead of ~80 × N.
-
 async def launch_browser(playwright):
     """Launch a single Chromium process to be shared across all URL tasks."""
     return await playwright.chromium.launch(
@@ -222,7 +247,7 @@ async def launch_browser(playwright):
     )
 
 async def new_context(browser):
-    """Create an isolated browser context (like an incognito window) inside the shared browser."""
+    """Create an isolated browser context inside the shared browser."""
     vp = random.choice(VIEWPORTS)
     ctx = await browser.new_context(
         user_agent=ua.random,
@@ -480,8 +505,6 @@ def format_message(job: dict) -> str:
     return "\n".join(lines)
 
 # ================= SINGLE-URL SCRAPER ================= #
-# Takes a shared browser; creates/destroys its own context only.
-
 async def check_site(url: str, seen_jobs: set, browser, is_first_cycle: bool = False) -> int:
     log(f"🔍 Checking: {url}")
     new_jobs = 0
@@ -493,7 +516,7 @@ async def check_site(url: str, seen_jobs: set, browser, is_first_cycle: bool = F
         context = await new_context(browser)
         page = await context.new_page()
         await stealth_async(page)
-        await asyncio.sleep(random.uniform(0, 5))   # stagger within the shared process
+        await asyncio.sleep(random.uniform(0, 5))
 
         if not await goto_with_retry(page, url):
             log(f"⛔ Giving up on {url}.")
@@ -541,7 +564,6 @@ async def check_site(url: str, seen_jobs: set, browser, is_first_cycle: bool = F
     except Exception as e:
         log(f"❌ SCRAPER ERROR on {url}: {e}")
     finally:
-        # Only close the lightweight context — never the shared browser
         for obj in (page, context):
             if obj:
                 try:
@@ -552,7 +574,7 @@ async def check_site(url: str, seen_jobs: set, browser, is_first_cycle: bool = F
     return new_jobs
 
 # ================= PARALLEL CYCLE ================= #
-_ctx_sem: asyncio.Semaphore | None = None   # caps concurrent contexts inside the browser
+_ctx_sem: asyncio.Semaphore | None = None
 
 async def _site_with_timeout(url: str, seen_jobs: set, browser, is_first_cycle: bool = False) -> int:
     async with _ctx_sem:
@@ -581,7 +603,6 @@ async def run_cycle(seen_jobs: set, browser, is_first_cycle: bool = False):
 async def main():
     global _ctx_sem
 
-    # Raise thread limit as high as the OS permits
     try:
         soft, hard = resource.getrlimit(resource.RLIMIT_NPROC)
         resource.setrlimit(resource.RLIMIT_NPROC, (hard, hard))
@@ -592,6 +613,8 @@ async def main():
     _ctx_sem = asyncio.Semaphore(MAX_CONCURRENT_CONTEXTS)
 
     log("🚀 NHS JOB BOT STARTED")
+    log(f"   Early-alert chat : {EARLY_CHAT_ID}  (immediate)")
+    log(f"   Group chat       : {CHAT_ID}  (+{EARLY_DELAY}s delay)")
     seen_jobs = load_seen()
     log(f"   Loaded {len(seen_jobs)} previously seen job IDs.")
     asyncio.create_task(telegram_consumer())
@@ -599,7 +622,6 @@ async def main():
     cycle = 0
     async with async_playwright() as playwright:
         while True:
-            # Launch ONE browser per recycle window, reuse it for N cycles
             log("🌐 Launching shared browser…")
             browser = await launch_browser(playwright)
             try:
@@ -607,7 +629,7 @@ async def main():
                     cycle += 1
                     log(f"─── CYCLE {cycle} ───────────────────────────────")
                     try:
-                        await run_cycle(seen_jobs, browser, is_first_cycle=(cycle == 1))
+                        await run_cycle(seen_jobs, browser, is_first_cycle=(cycle == -1))
                     except Exception as e:
                         log(f"🔥 Cycle-level error (will continue): {e}")
                     log(f"💤 Sleeping {CHECK_INTERVAL}s …\n")
@@ -619,7 +641,7 @@ async def main():
                 except Exception:
                     pass
                 gc.collect()
-                await asyncio.sleep(5)   # let the OS fully reap the Chromium process
+                await asyncio.sleep(5)
 
 
 if __name__ == "__main__":
