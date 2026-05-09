@@ -13,7 +13,7 @@ from fake_useragent import UserAgent
 # ================= CONFIG ================= #
 BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"
 CHAT_ID         = "-1003888963521"   # group — receives alerts with 5-min delay
-EARLY_CHAT_ID   = "-5080572458"       # personal — receives alerts immediately (5 min early)
+EARLY_CHAT_ID   = "6002351367"       # personal — receives alerts immediately (5 min early)
 EARLY_DELAY     = 300                # seconds the group waits after the personal alert
 
 CHECK_INTERVAL = 120          # seconds between full cycles
