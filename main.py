@@ -13,7 +13,7 @@ from fake_useragent import UserAgent
 # ================= CONFIG ================= #
 BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"
 CHAT_ID         = "-1003888963521"   # group — receives alerts with 5-min delay
-EARLY_CHAT_ID   = "6002351367"       # personal — receives alerts immediately (5 min early)
+EARLY_CHAT_ID   = "-1001344597324"       # personal — receives alerts immediately (5 min early)
 EARLY_DELAY     = 10                # seconds the group waits after the personal alert
 
 CHECK_INTERVAL = 120          # seconds between full cycles
@@ -22,7 +22,7 @@ DETAIL_TIMEOUT = 15_000       # ms
 SITE_HARD_LIMIT = 300         # seconds — hard kill per URL task
 TELEGRAM_SEND_INTERVAL = 1.1
 MAX_CONCURRENT_CONTEXTS = 3   # concurrent contexts inside the ONE shared browser
-PLAYWRIGHT_RECYCLE_EVERY = 10 # recreate browser every N cycles
+PLAYWRIGHT_RECYCLE_EVERY = 120 # recreate browser every N cycles
 
 ua = UserAgent()
 
