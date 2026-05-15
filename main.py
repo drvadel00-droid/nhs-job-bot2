@@ -44,35 +44,67 @@ URLS = [
 ]
 
 # ================= FILTERS ================= #
-MEDICAL_SPECIALTIES = [
+
+# ---- CHAT_ID (group, broad filter) ----
+CHAT_SPECIALTIES = [
     "medicine", "acute", "internal", "general", "medicine",
     "surgery", "general surgery", "trauma", "orthopaedic",
     "plastic", "emergency", "cardiology", "respiratory",
     "gastro", "neurology", "paediatric", "haematology",
     "intensive care", "critical care", "icu", "vascular", "urology",
+    "obstetrics", "gynaecology", "gynecology", "anesthesia",
 ]
-
-GRADE_KEYWORDS = [
-    "fy1", "fy2", "foundation",
+CHAT_GRADE_KEYWORDS = [
+    "fy1", "fy2", "foundation", "st4", "st5", "st6", "st7",
     "ct1", "ct2", "ct3",
     "st1", "st2", "st3",
     "registrar",
     "trust", "doctor", "grade",
-    "clinical",  "fellow", 
+    "clinical", "fellow",
     "specialty",
     "junior",
-    "locum", "doctor", "teaching",
+    "locum", "doctor", "teaching", "senior",
 ]
-
-EXCLUDE_KEYWORDS = [
-    "consultant", "st4", "st5", "st6", "st7",
+CHAT_EXCLUDE_KEYWORDS = [
+    "consultant",
     "nurse", "midwife", "assistant",
     "manager", "director", "admin",
     "physiotherapist", "radiographer",
     "lead", "scientist", "receptionist", "housekeeper",
     "cook", "clerk", "practitioner", "nutritionist",
     "nutrition", "coordinator", "therapist", "secretary",
-    "pharmacist", "matron", "worker", "pharmacy", "chief"
+    "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal",
+]
+
+# ---- EARLY_CHAT_ID (personal, narrow filter) ----
+EARLY_SPECIALTIES = [
+    "medicine", "acute", "internal", "general", "medicine",
+    "surgery", "general surgery", "trauma", "orthopaedic",
+    "plastic", "emergency", "cardiology", "respiratory",
+    "gastro", "neurology", "paediatric", "haematology",
+    "intensive care", "critical care", "icu", "vascular", "urology", "rheumatology",
+]
+EARLY_GRADE_KEYWORDS = [
+    "fy1", "fy2", "foundation",
+    "ct1", "ct2", "ct3",
+    "st1", "st2", "st3",
+    "registrar",
+    "trust", "doctor", "grade",
+    "clinical", "fellow",
+    "specialty",
+    "junior",
+    "locum", "doctor", "teaching",
+]
+EARLY_EXCLUDE_KEYWORDS = [
+    "consultant", "st4", "st5", "st6", "st7", "cct",
+    "nurse", "midwife", "assistant",
+    "manager", "director", "admin",
+    "physiotherapist", "radiographer",
+    "lead", "scientist", "receptionist", "housekeeper",
+    "cook", "clerk", "practitioner", "nutritionist",
+    "nutrition", "coordinator", "therapist", "secretary",
+    "pharmacist", "matron", "worker", "pharmacy", "chief", "psychiatry",
+    "maxillofacial", "counseling", "principal",
 ]
 
 VIEWPORTS = [
@@ -175,13 +207,23 @@ def enqueue_telegram(msg: str):
     asyncio.create_task(_schedule_group_send(msg))
 
 # ================= FILTER LOGIC ================= #
-def relevant_job(title: str) -> bool:
+def relevant_for_chat(title: str) -> bool:
     t = title.lower()
-    if any(ex in t for ex in EXCLUDE_KEYWORDS):
+    if any(ex in t for ex in CHAT_EXCLUDE_KEYWORDS):
         return False
-    if not any(sp in t for sp in MEDICAL_SPECIALTIES):
+    if not any(sp in t for sp in CHAT_SPECIALTIES):
         return False
-    if not any(gr in t for gr in GRADE_KEYWORDS):
+    if not any(gr in t for gr in CHAT_GRADE_KEYWORDS):
+        return False
+    return True
+
+def relevant_for_early(title: str) -> bool:
+    t = title.lower()
+    if any(ex in t for ex in EARLY_EXCLUDE_KEYWORDS):
+        return False
+    if not any(sp in t for sp in EARLY_SPECIALTIES):
+        return False
+    if not any(gr in t for gr in EARLY_GRADE_KEYWORDS):
         return False
     return True
 
@@ -540,7 +582,9 @@ async def check_site(url: str, seen_jobs: set, browser, is_first_cycle: bool = F
                         continue
 
                 title = job.get("title", "")
-                if not title or not relevant_job(title):
+                goes_to_early = relevant_for_early(title)
+                goes_to_chat  = relevant_for_chat(title)
+                if not title or (not goes_to_early and not goes_to_chat):
                     continue
 
                 async with _seen_lock:
@@ -552,7 +596,12 @@ async def check_site(url: str, seen_jobs: set, browser, is_first_cycle: bool = F
                     log(f"   👁️  SEEN (first cycle, no alert): {title}")
                 else:
                     log(f"   🆕 NEW JOB [{job.get('site','?')}]: {title}")
-                    enqueue_telegram(format_message(job))
+                    msg = format_message(job)
+                    if goes_to_early:
+                        _tg_queue.put_nowait((EARLY_CHAT_ID, msg))
+                        asyncio.create_task(_schedule_group_send(msg))
+                    elif goes_to_chat:
+                        _tg_queue.put_nowait((CHAT_ID, msg))
                 await async_save_seen(job_id)
                 new_jobs += 1
 
