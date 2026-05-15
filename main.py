@@ -595,12 +595,13 @@ async def check_site(url: str, seen_jobs: set, browser, is_first_cycle: bool = F
                 if is_first_cycle:
                     log(f"   👁️  SEEN (first cycle, no alert): {title}")
                 else:
-                    log(f"   🆕 NEW JOB [{job.get('site','?')}]: {title}")
                     msg = format_message(job)
                     if goes_to_early:
+                        log(f"   🆕 NEW JOB [{job.get('site','?')}] → early + public: {title}")
                         _tg_queue.put_nowait((EARLY_CHAT_ID, msg))
                         asyncio.create_task(_schedule_group_send(msg))
                     elif goes_to_chat:
+                        log(f"   🆕 NEW JOB [{job.get('site','?')}] → public only: {title}")
                         _tg_queue.put_nowait((CHAT_ID, msg))
                 await async_save_seen(job_id)
                 new_jobs += 1
