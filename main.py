@@ -3,6 +3,7 @@ import random
 import re
 import aiohttp
 import gc
+import os
 import resource
 from datetime import datetime
 from bs4 import BeautifulSoup
@@ -121,17 +122,18 @@ def log(msg: str):
 
 # ================= SEEN-JOBS PERSISTENCE ================= #
 _seen_lock = asyncio.Lock()
+SEEN_JOBS_PATH = os.environ.get("SEEN_JOBS_PATH", "seen_jobs.txt")
 
 def load_seen() -> set:
     try:
-        with open("seen_jobs.txt", "r") as f:
+        with open(SEEN_JOBS_PATH, "r") as f:
             return set(f.read().splitlines())
     except FileNotFoundError:
         return set()
 
 async def async_save_seen(job_id: str):
     async with _seen_lock:
-        with open("seen_jobs.txt", "a") as f:
+        with open(SEEN_JOBS_PATH, "a") as f:
             f.write(job_id + "\n")
 
 # ================= TELEGRAM QUEUE ================= #
@@ -679,7 +681,7 @@ async def main():
                     cycle += 1
                     log(f"─── CYCLE {cycle} ───────────────────────────────")
                     try:
-                        await run_cycle(seen_jobs, browser, is_first_cycle=(cycle == 1))
+                        await run_cycle(seen_jobs, browser, is_first_cycle=(cycle == -1))
                     except Exception as e:
                         log(f"🔥 Cycle-level error (will continue): {e}")
                     log(f"💤 Sleeping {CHECK_INTERVAL}s …\n")
