@@ -712,6 +712,11 @@ async def main():
     log("🚀 NHS JOB BOT STARTED")
     log(f"   Early-alert chat : {EARLY_CHAT_ID}  (immediate)")
     log(f"   Group chat       : {CHAT_ID}  (+{EARLY_DELAY}s delay)")
+
+    log("📡 Sending Whop startup test message…")
+    async with aiohttp.ClientSession() as _s:
+        await _send_whop(_s, "🚀 NHS Job Bot is online and monitoring for new jobs.")
+
     seen_jobs = load_seen()
     log(f"   Loaded {len(seen_jobs)} previously seen job IDs.")
     asyncio.create_task(telegram_consumer())
