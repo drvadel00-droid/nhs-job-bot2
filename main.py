@@ -198,7 +198,7 @@ async def telegram_consumer():
 
 async def _send_whop(session: aiohttp.ClientSession, msg: str):
     """Send a plain-text message to the Whop chat channel."""
-    url = "https://api.whop.com/api/v5/messages"
+    url = "https://api.whop.com/api/v1/messages"
     headers = {
         "Authorization": f"Bearer {WHOP_API_KEY}",
         "Content-Type": "application/json",
