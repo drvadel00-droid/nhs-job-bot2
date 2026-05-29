@@ -20,6 +20,7 @@ EARLY_DELAY     = 300                # seconds the group waits after the persona
 WHOP_API_KEY    = "apik_9m81wG8HQcB5w_C5239851_C_34e13a20b1345acb5b295e4604e4061661df0ece2ad6f226fb0ca3b42b7154"
 WHOP_CHANNEL_ID = "exp_QsUJQg0vZ6kHXM"
 
+
 CHECK_INTERVAL = 120          # seconds between full cycles
 PAGE_TIMEOUT = 20_000         # ms
 DETAIL_TIMEOUT = 15_000       # ms
@@ -196,15 +197,14 @@ async def telegram_consumer():
 
 
 async def _send_whop(session: aiohttp.ClientSession, msg: str):
-    """Send a plain-text message to the Whop channel."""
-    url = f"https://api.whop.com/api/v5/experiences/{WHOP_CHANNEL_ID}/messages"
+    """Send a plain-text message to the Whop chat channel."""
+    url = "https://api.whop.com/api/v5/messages"
     headers = {
         "Authorization": f"Bearer {WHOP_API_KEY}",
         "Content-Type": "application/json",
     }
-    # Strip HTML tags for plain-text Whop message
     plain = re.sub(r"<[^>]+>", "", msg)
-    payload = {"content": plain}
+    payload = {"content": plain, "experience_id": WHOP_CHANNEL_ID}
     backoff = 5
     for attempt in range(4):
         try:
