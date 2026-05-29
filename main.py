@@ -17,6 +17,9 @@ CHAT_ID         = "-1003888963521"   # group — receives alerts with 5-min dela
 EARLY_CHAT_ID   = "-1003967074726"       # personal — receives alerts immediately (5 min early)
 EARLY_DELAY     = 300                # seconds the group waits after the personal alert
 
+WHOP_API_KEY    = "apik_9m81wG8HQcB5w_C5239851_C_34e13a20b1345acb5b295e4604e4061661df0ece2ad6f226fb0ca3b42b7154"
+WHOP_CHANNEL_ID = "exp_QsUJQg0vZ6kHXM"
+
 CHECK_INTERVAL = 120          # seconds between full cycles
 PAGE_TIMEOUT = 20_000         # ms
 DETAIL_TIMEOUT = 15_000       # ms
@@ -192,10 +195,52 @@ async def telegram_consumer():
             await asyncio.sleep(TELEGRAM_SEND_INTERVAL)
 
 
+async def _send_whop(session: aiohttp.ClientSession, msg: str):
+    """Send a plain-text message to the Whop channel."""
+    url = f"https://api.whop.com/api/v5/experiences/{WHOP_CHANNEL_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {WHOP_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    # Strip HTML tags for plain-text Whop message
+    plain = re.sub(r"<[^>]+>", "", msg)
+    payload = {"content": plain}
+    backoff = 5
+    for attempt in range(4):
+        try:
+            async with session.post(
+                url, json=payload, headers=headers,
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as r:
+                if r.status in (200, 201):
+                    log(f"✅ Whop sent → {WHOP_CHANNEL_ID}")
+                    return
+                elif r.status == 429:
+                    body = await r.json()
+                    wait = body.get("retry_after", backoff)
+                    log(f"⚠️  Whop 429 — retry_after={wait}s")
+                    await asyncio.sleep(wait)
+                    backoff = max(backoff * 2, wait + 1)
+                else:
+                    text = await r.text()
+                    log(f"❌ Whop HTTP {r.status}: {text[:200]}")
+                    return
+        except asyncio.TimeoutError:
+            log(f"❌ Whop send timed out (attempt {attempt + 1})")
+            await asyncio.sleep(backoff)
+            backoff *= 2
+        except Exception as e:
+            log(f"❌ Whop exception: {e}")
+            await asyncio.sleep(backoff)
+            backoff *= 2
+
+
 async def _schedule_group_send(msg: str):
-    """Wait EARLY_DELAY seconds then drop the group message into the queue."""
+    """Wait EARLY_DELAY seconds then send to Telegram group AND Whop channel."""
     await asyncio.sleep(EARLY_DELAY)
     _tg_queue.put_nowait((CHAT_ID, msg))
+    async with aiohttp.ClientSession() as session:
+        await _send_whop(session, msg)
 
 
 def enqueue_telegram(msg: str):
