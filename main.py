@@ -17,7 +17,7 @@ CHAT_ID         = "-1003888963521"   # group — receives alerts with 5-min dela
 EARLY_CHAT_ID   = "-1003967074726"       # personal — receives alerts immediately (5 min early)
 EARLY_DELAY     = 300                # seconds the group waits after the personal alert
 
-WHOP_API_KEY    = "apik_9m81wG8HQcB5w_C5239851_C_34e13a20b1345acb5b295e4604e4061661df0ece2ad6f226fb0ca3b42b7154"
+WHOP_API_KEY    = "apik_mfuhDVowbF9iP_C5239851_C_3dfd5f8c38246c372d97dad51d08cd0be383608d7440e2094fc6d65f729812"
 WHOP_CHANNEL_ID = "exp_QsUJQg0vZ6kHXM"
 
 
@@ -198,7 +198,7 @@ async def telegram_consumer():
 
 async def _send_whop(session: aiohttp.ClientSession, msg: str):
     """Send a plain-text message to the Whop chat channel."""
-    url = "https://api.whop.com/api/v5/messages"
+    url = "https://api.whop.com/api/v1/messages"
     headers = {
         "Authorization": f"Bearer {WHOP_API_KEY}",
         "Content-Type": "application/json",
