@@ -18,7 +18,7 @@ EARLY_CHAT_ID   = "-1003967074726"       # personal — receives alerts immediat
 EARLY_DELAY     = 300                # seconds the group waits after the personal alert
 
 WHOP_API_KEY    = "apik_EyRwm36MY0wlO_C5239851_C_0a5f2861b58987ee99b0ad5796584acf6a6dcf29bc32218a94084e6e05bbb2"
-WHOP_CHANNEL_ID = "exp_QsUJQg0vZ6kHXM"
+WHOP_CHANNEL_ID = "chat_feed_1CbW9WpgbzoeU9E9KQ5WpT"
 
 
 CHECK_INTERVAL = 120          # seconds between full cycles
