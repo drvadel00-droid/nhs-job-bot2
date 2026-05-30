@@ -12,27 +12,26 @@ from playwright_stealth import stealth_async
 from fake_useragent import UserAgent
 
 # ================= CONFIG ================= #
-BOT_TOKEN = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"
-CHAT_ID         = "-1003888963521"   # group — receives alerts with 5-min delay
-EARLY_CHAT_ID   = "-1003967074726"       # personal — receives alerts immediately (5 min early)
-EARLY_DELAY     = 300                # seconds the group waits after the personal alert
+BOT_TOKEN     = "8213751012:AAFYvubDXeY3xU8vjaWLxNTT7XqMtPhUuwQ"
+CHAT_ID       = "-1003888963521"    # Telegram group — delayed
+EARLY_CHAT_ID = "-1003967074726"    # Telegram personal — immediate
+EARLY_DELAY   = 300                 # seconds before group/Whop receive alert
 
 WHOP_API_KEY    = "apik_ud2gxqVNMTONA_A2052134_C_9990092af1338a1becd245e112caaac179d91e2e6bbf23cbb0e176ab43765a"
-WHOP_CHANNEL_ID = "chat_feed_1CbW9WpgbzoeU9E9KQ5WpT"
+WHOP_CHANNEL_ID = "chat_feed_1CbW9WpgbzoeU9E9KQ5WpT"  # Job Alerts Chat (main)
 
-
-CHECK_INTERVAL = 120          # seconds between full cycles
-PAGE_TIMEOUT = 20_000         # ms
-DETAIL_TIMEOUT = 15_000       # ms
-SITE_HARD_LIMIT = 300         # seconds — hard kill per URL task
+CHECK_INTERVAL       = 120
+PAGE_TIMEOUT         = 20_000
+DETAIL_TIMEOUT       = 15_000
+SITE_HARD_LIMIT      = 300
 TELEGRAM_SEND_INTERVAL = 1.1
-MAX_CONCURRENT_CONTEXTS = 3   # concurrent contexts inside the ONE shared browser
-PLAYWRIGHT_RECYCLE_EVERY = 120 # recreate browser every N cycles
+MAX_CONCURRENT_CONTEXTS = 3
+PLAYWRIGHT_RECYCLE_EVERY = 120
 
 ua = UserAgent()
 
+# ================= MAIN BROAD URLs (existing) ================= #
 URLS = [
-    # HealthJobsUK
     "https://www.healthjobsuk.com/job_list?JobSearch_Submit=Search&_srt=publicationdate&_sd=desc",
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=534&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=64082&_srt=startdate&_sd=d",
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=737&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=81534&_srt=startdate&_sd=a",
@@ -40,76 +39,163 @@ URLS = [
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=572&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=97667&_srt=startdate&_sd=a",
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=558&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=110250&_srt=startdate&_sd=a",
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=581&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=44291&_srt=startdate&_sd=a",
-    # NHS Jobs England
     "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
-    # HSCNI (Northern Ireland)
     "https://jobs.hscni.net/Search?SearchCatID=0",
-    # Scotland
     "https://apply.jobs.scot.nhs.uk/Home/Job",
 ]
 
-# ================= FILTERS ================= #
-
-# ---- CHAT_ID (group, broad filter) ----
+# ================= MAIN BROAD FILTERS (Telegram only) ================= #
 CHAT_SPECIALTIES = [
-    "medicine", "acute", "internal", "general", "medicine",
-    "surgery", "general surgery", "trauma", "orthopaedic",
-    "plastic", "emergency", "cardiology", "respiratory",
-    "gastro", "neurology", "paediatric", "haematology",
-    "intensive care", "critical care", "icu", "vascular", "urology",
-    "obstetrics", "gynaecology", "gynecology", "anesthesia",
+    "medicine", "acute", "internal", "general", "surgery", "general surgery",
+    "trauma", "orthopaedic", "plastic", "emergency", "cardiology", "respiratory",
+    "gastro", "neurology", "paediatric", "haematology", "intensive care",
+    "critical care", "icu", "vascular", "urology", "obstetrics", "gynaecology",
+    "gynecology", "anesthesia",
 ]
 CHAT_GRADE_KEYWORDS = [
     "fy1", "fy2", "foundation", "st4", "st5", "st6", "st7",
-    "ct1", "ct2", "ct3",
-    "st1", "st2", "st3",
-    "registrar",
-    "trust", "doctor", "grade",
-    "clinical", "fellow",
-    "specialty",
-    "junior",
-    "locum", "doctor", "teaching", "senior",
+    "ct1", "ct2", "ct3", "st1", "st2", "st3", "registrar",
+    "trust", "doctor", "grade", "clinical", "fellow", "specialty",
+    "junior", "locum", "teaching", "senior",
 ]
 CHAT_EXCLUDE_KEYWORDS = [
-    "consultant",
-    "nurse", "midwife", "assistant",
-    "manager", "director", "admin",
-    "physiotherapist", "radiographer",
-    "lead", "scientist", "receptionist", "housekeeper",
-    "cook", "clerk", "practitioner", "nutritionist",
-    "nutrition", "coordinator", "therapist", "secretary",
-    "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal",
+    "consultant", "nurse", "midwife", "assistant", "manager", "director", "admin",
+    "physiotherapist", "radiographer", "lead", "scientist", "receptionist",
+    "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition",
+    "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker",
+    "pharmacy", "chief", "counseling", "principal",
 ]
 
-# ---- EARLY_CHAT_ID (personal, narrow filter) ----
 EARLY_SPECIALTIES = [
-    "medicine", "acute", "internal", "general", "medicine",
-    "surgery", "general surgery", "trauma", "orthopaedic",
-    "plastic", "emergency", "cardiology", "respiratory",
-    "gastro", "neurology", "paediatric", "haematology",
-    "intensive care", "critical care", "icu", "vascular", "urology", "rheumatology",
+    "medicine", "acute", "internal", "general", "surgery", "general surgery",
+    "trauma", "orthopaedic", "plastic", "emergency", "cardiology", "respiratory",
+    "gastro", "neurology", "paediatric", "haematology", "intensive care",
+    "critical care", "icu", "vascular", "urology", "rheumatology",
 ]
 EARLY_GRADE_KEYWORDS = [
-    "fy1", "fy2", "foundation",
-    "ct1", "ct2", "ct3",
-    "st1", "st2", "st3",
-    "registrar",
-    "trust", "doctor", "grade",
-    "clinical", "fellow",
-    "specialty",
-    "junior",
-    "locum", "doctor", "teaching",
+    "fy1", "fy2", "foundation", "ct1", "ct2", "ct3", "st1", "st2", "st3",
+    "registrar", "trust", "doctor", "grade", "clinical", "fellow", "specialty",
+    "junior", "locum", "teaching",
 ]
 EARLY_EXCLUDE_KEYWORDS = [
-    "consultant", "st4", "st5", "st6", "st7", "cct",
-    "nurse", "midwife", "assistant",
-    "manager", "director", "admin",
-    "physiotherapist", "radiographer",
-    "lead", "scientist", "receptionist", "housekeeper",
-    "cook", "clerk", "practitioner", "nutritionist",
-    "nutrition", "coordinator", "therapist", "secretary",
-    "pharmacist", "matron", "worker", "pharmacy", "chief", "psychiatry",
-    "maxillofacial", "counseling", "principal",
+    "consultant", "st4", "st5", "st6", "st7", "cct", "nurse", "midwife",
+    "assistant", "manager", "director", "admin", "physiotherapist", "radiographer",
+    "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk",
+    "practitioner", "nutritionist", "nutrition", "coordinator", "therapist",
+    "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief",
+    "psychiatry", "maxillofacial", "counseling", "principal",
+]
+
+# ================= SPECIALTY WHOP CHANNELS ================= #
+# Each entry: urls scraped, specialty/grade/exclude filters, Whop channel_id.
+# Same EARLY_DELAY rule applies: personal Telegram fires immediately,
+# Whop channel fires after EARLY_DELAY seconds.
+SPECIALTY_CHANNELS = [
+    {
+        "name": "Surgical Jobs",
+        "whop_channel": "chat_feed_1CbZauPFt68E7nrkkwbHj5",
+        "urls": [
+            "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=594&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=19024&_srt=startdate&_sd=a",
+            "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
+            "https://jobs.hscni.net/Search?SearchCatID=0",
+            "https://apply.jobs.scot.nhs.uk/Home/Job",
+        ],
+        "specialties": ["general", "surgery", "general surgery", "trauma", "orthopaedic", "plastic", "vascular", "urology", "neurosurgery", "pediatric surgery"],
+        "grades":      ["fy1", "fy2", "foundation", "st4", "st5", "st6", "st7", "ct1", "ct2", "ct3", "st1", "st2", "st3", "registrar", "trust", "doctor", "grade", "clinical", "fellow", "specialty", "junior", "locum", "teaching", "senior"],
+        "excludes":    ["nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
+    },
+    {
+        "name": "Medicine Jobs",
+        "whop_channel": "chat_feed_1CbZb7mwvyDvY6rugrvuQr",
+        "urls": [
+            "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=558&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=59162&_srt=startdate&_sd=a",
+            "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
+            "https://jobs.hscni.net/Search?SearchCatID=0",
+            "https://apply.jobs.scot.nhs.uk/Home/Job",
+        ],
+        "specialties": ["medicine", "acute", "internal", "general medicine", "cardiology", "respiratory", "gastroenterology", "neurology", "haematology", "care", "rheumatology"],
+        "grades":      ["fy1", "fy2", "foundation", "st4", "st5", "st6", "st7", "ct1", "ct2", "ct3", "st1", "st2", "st3", "registrar", "trust", "doctor", "grade", "clinical", "fellow", "specialty", "junior", "locum", "teaching", "senior"],
+        "excludes":    ["consultant", "nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
+    },
+    {
+        "name": "Anesthesia and ICU Jobs",
+        "whop_channel": "chat_feed_1CbZbCEg9WepzQtqoxYjHH",
+        "urls": [
+            "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=555&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=88194",
+            "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=535&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=91141",
+            "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
+            "https://jobs.hscni.net/Search?SearchCatID=0",
+            "https://apply.jobs.scot.nhs.uk/Home/Job",
+        ],
+        "specialties": ["dependency", "intensive care", "critical care", "icu", "anesthesia", "palliative"],
+        "grades":      ["fy1", "fy2", "foundation", "st4", "st5", "st6", "st7", "ct1", "ct2", "ct3", "st1", "st2", "st3", "registrar", "trust", "doctor", "grade", "clinical", "fellow", "specialty", "junior", "locum", "teaching", "senior"],
+        "excludes":    ["consultant", "nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
+    },
+    {
+        "name": "Pediatrics Jobs",
+        "whop_channel": "chat_feed_1CbZbHh1CLMadCjC1VMCkU",
+        "urls": [
+            "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=578&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=193183",
+            "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
+            "https://jobs.hscni.net/Search?SearchCatID=0",
+            "https://apply.jobs.scot.nhs.uk/Home/Job",
+        ],
+        "specialties": ["pediatric", "pediatrics", "paediatric", "paediatrics"],
+        "grades":      ["fy1", "fy2", "foundation", "st4", "st5", "st6", "st7", "ct1", "ct2", "ct3", "st1", "st2", "st3", "registrar", "trust", "doctor", "grade", "clinical", "fellow", "specialty", "junior", "locum", "teaching", "senior"],
+        "excludes":    ["nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
+    },
+    {
+        "name": "Obstetrics and Gynecology Jobs",
+        "whop_channel": "chat_feed_1CbZbMAbDin4GKPrmer3bD",
+        "urls": [
+            "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=567&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=198861",
+            "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
+            "https://jobs.hscni.net/Search?SearchCatID=0",
+            "https://apply.jobs.scot.nhs.uk/Home/Job",
+        ],
+        "specialties": ["obstetrics", "gynaecology", "gynecology", "obs", "gynae", "maternity"],
+        "grades":      ["fy1", "fy2", "foundation", "st4", "st5", "st6", "st7", "ct1", "ct2", "ct3", "st1", "st2", "st3", "registrar", "trust", "doctor", "grade", "clinical", "fellow", "specialty", "junior", "locum", "teaching", "senior"],
+        "excludes":    ["nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
+    },
+    {
+        "name": "Emergency Medicine Jobs",
+        "whop_channel": "chat_feed_1CbZbQc9yXPUWpEE5NXPCB",
+        "urls": [
+            "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=534&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=204916",
+            "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
+            "https://jobs.hscni.net/Search?SearchCatID=0",
+            "https://apply.jobs.scot.nhs.uk/Home/Job",
+        ],
+        "specialties": ["emergency", "accident", "a&e", "ed ", "resus", "trauma", "pediatric emergency", "paediatric emergency", "pemed"],
+        "grades":      ["fy1", "fy2", "foundation", "st4", "st5", "st6", "st7", "ct1", "ct2", "ct3", "st1", "st2", "st3", "registrar", "trust", "doctor", "grade", "clinical", "fellow", "specialty", "junior", "locum", "teaching", "senior"],
+        "excludes":    ["consultant", "nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
+    },
+    {
+        "name": "Ophthalmology Jobs",
+        "whop_channel": "chat_feed_1CbZba5ncFusdNv7sYB9uH",
+        "urls": [
+            "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=570&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=212800",
+            "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
+            "https://jobs.hscni.net/Search?SearchCatID=0",
+            "https://apply.jobs.scot.nhs.uk/Home/Job",
+        ],
+        "specialties": ["ophthalmology", "eyes", "eye clinic", "vitreoretinal"],
+        "grades":      ["fy1", "fy2", "foundation", "st4", "st5", "st6", "st7", "ct1", "ct2", "ct3", "st1", "st2", "st3", "registrar", "trust", "doctor", "grade", "clinical", "fellow", "specialty", "junior", "locum", "teaching", "senior"],
+        "excludes":    ["consultant", "nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
+    },
+    {
+        "name": "ENT Jobs",
+        "whop_channel": "chat_feed_1CbZbeHpodD6MoAZPueKFz",
+        "urls": [
+            "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=1088&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=218046",
+            "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
+            "https://jobs.hscni.net/Search?SearchCatID=0",
+            "https://apply.jobs.scot.nhs.uk/Home/Job",
+        ],
+        "specialties": ["ent", "ear nose throat", "otolaryngology", "head and neck surgery"],
+        "grades":      ["fy1", "fy2", "foundation", "st4", "st5", "st6", "st7", "ct1", "ct2", "ct3", "st1", "st2", "st3", "registrar", "trust", "doctor", "grade", "clinical", "fellow", "specialty", "junior", "locum", "teaching", "senior"],
+        "excludes":    ["consultant", "nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
+    },
 ]
 
 VIEWPORTS = [
@@ -141,20 +227,15 @@ async def async_save_seen(job_id: str):
             f.write(job_id + "\n")
 
 # ================= TELEGRAM QUEUE ================= #
-# Each queue item is a (chat_id, message_text) tuple.
 _tg_queue: asyncio.Queue = asyncio.Queue()
 
 async def _send_one(session: aiohttp.ClientSession, chat_id: str, msg: str):
-    """Send a single message to one chat_id with retry/backoff logic."""
     api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": chat_id, "text": msg, "parse_mode": "HTML"}
     backoff = 5
     for attempt in range(5):
         try:
-            async with session.post(
-                api_url, data=payload,
-                timeout=aiohttp.ClientTimeout(total=10)
-            ) as r:
+            async with session.post(api_url, data=payload, timeout=aiohttp.ClientTimeout(total=10)) as r:
                 if r.status == 200:
                     log(f"✅ Telegram sent → {chat_id}")
                     return
@@ -179,11 +260,6 @@ async def _send_one(session: aiohttp.ClientSession, chat_id: str, msg: str):
 
 
 async def telegram_consumer():
-    """
-    Drain _tg_queue.  Each item is (chat_id, text).
-    Items are placed here by enqueue_telegram(); the delayed group send
-    is handled separately via _schedule_group_send().
-    """
     async with aiohttp.ClientSession() as session:
         while True:
             item = await _tg_queue.get()
@@ -196,24 +272,18 @@ async def telegram_consumer():
             await asyncio.sleep(TELEGRAM_SEND_INTERVAL)
 
 
+# ================= WHOP ================= #
 async def _send_whop(session: aiohttp.ClientSession, msg: str, channel_id: str = WHOP_CHANNEL_ID):
-    """Send a plain-text message to a Whop chat channel."""
     url = "https://api.whop.com/api/v1/messages"
-    headers = {
-        "Authorization": f"Bearer {WHOP_API_KEY}",
-        "Content-Type": "application/json",
-    }
+    headers = {"Authorization": f"Bearer {WHOP_API_KEY}", "Content-Type": "application/json"}
     plain = re.sub(r"<[^>]+>", "", msg)
     payload = {"content": plain, "channel_id": channel_id}
     backoff = 5
     for attempt in range(4):
         try:
-            async with session.post(
-                url, json=payload, headers=headers,
-                timeout=aiohttp.ClientTimeout(total=10)
-            ) as r:
+            async with session.post(url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as r:
                 if r.status in (200, 201):
-                    log(f"✅ Whop sent → {WHOP_CHANNEL_ID}")
+                    log(f"✅ Whop sent → {channel_id}")
                     return
                 elif r.status == 429:
                     body = await r.json()
@@ -235,23 +305,14 @@ async def _send_whop(session: aiohttp.ClientSession, msg: str, channel_id: str =
             backoff *= 2
 
 
-async def _schedule_group_send(msg: str):
-    """Wait EARLY_DELAY seconds then send to Telegram group AND Whop channel."""
+async def _schedule_delayed_send(msg: str, whop_channels: list[str]):
+    """Wait EARLY_DELAY then send to Telegram group + all specified Whop channels."""
     await asyncio.sleep(EARLY_DELAY)
     _tg_queue.put_nowait((CHAT_ID, msg))
     async with aiohttp.ClientSession() as session:
-        await _send_whop(session, msg)
+        for ch in whop_channels:
+            await _send_whop(session, msg, channel_id=ch)
 
-
-def enqueue_telegram(msg: str):
-    """
-    1. Send immediately to the personal (early-alert) chat.
-    2. Schedule the group send EARLY_DELAY seconds later.
-    """
-    # Immediate personal alert
-    _tg_queue.put_nowait((EARLY_CHAT_ID, msg))
-    # Delayed group alert (fire-and-forget coroutine)
-    asyncio.create_task(_schedule_group_send(msg))
 
 # ================= FILTER LOGIC ================= #
 def relevant_for_chat(title: str) -> bool:
@@ -271,6 +332,16 @@ def relevant_for_early(title: str) -> bool:
     if not any(sp in t for sp in EARLY_SPECIALTIES):
         return False
     if not any(gr in t for gr in EARLY_GRADE_KEYWORDS):
+        return False
+    return True
+
+def relevant_for_specialty(title: str, ch: dict) -> bool:
+    t = title.lower()
+    if any(ex in t for ex in ch["excludes"]):
+        return False
+    if not any(sp in t for sp in ch["specialties"]):
+        return False
+    if not any(gr in t for gr in ch["grades"]):
         return False
     return True
 
@@ -321,34 +392,21 @@ async def random_mouse_move(page):
 
 # ================= BROWSER FACTORY ================= #
 async def launch_browser(playwright):
-    """Launch a single Chromium process to be shared across all URL tasks."""
     return await playwright.chromium.launch(
         headless=True,
         args=[
-            "--no-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-gpu",
-            "--disable-setuid-sandbox",
-            "--disable-blink-features=AutomationControlled",
-            "--disable-infobars",
-            "--window-size=1920,1080",
+            "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
+            "--disable-setuid-sandbox", "--disable-blink-features=AutomationControlled",
+            "--disable-infobars", "--window-size=1920,1080",
         ],
     )
 
 async def new_context(browser):
-    """Create an isolated browser context inside the shared browser."""
     vp = random.choice(VIEWPORTS)
     ctx = await browser.new_context(
-        user_agent=ua.random,
-        viewport=vp,
-        locale="en-GB",
-        timezone_id="Europe/London",
-        java_script_enabled=True,
-        extra_http_headers={
-            "Accept-Language": "en-GB,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
-            "DNT": "1",
-        },
+        user_agent=ua.random, viewport=vp, locale="en-GB",
+        timezone_id="Europe/London", java_script_enabled=True,
+        extra_http_headers={"Accept-Language": "en-GB,en;q=0.9", "Accept-Encoding": "gzip, deflate, br", "DNT": "1"},
     )
     await ctx.add_init_script("""
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
@@ -361,8 +419,7 @@ async def new_context(browser):
 # ================= GOTO WITH RETRY ================= #
 _WAIT_STRATEGIES = ["domcontentloaded", "commit"]
 
-async def goto_with_retry(page, url: str, retries: int = 2,
-                          timeout: int = PAGE_TIMEOUT) -> bool:
+async def goto_with_retry(page, url: str, retries: int = 2, timeout: int = PAGE_TIMEOUT) -> bool:
     for attempt in range(1, retries + 1):
         strategy = _WAIT_STRATEGIES[min(attempt - 1, len(_WAIT_STRATEGIES) - 1)]
         try:
@@ -384,7 +441,6 @@ async def goto_with_retry(page, url: str, retries: int = 2,
     return False
 
 # ================= SITE-SPECIFIC PARSERS ================= #
-
 def parse_nhsjobs(soup: BeautifulSoup, base: str) -> list[dict]:
     jobs = []
     for card in soup.select("li[data-test='search-result']"):
@@ -417,7 +473,6 @@ def parse_nhsjobs(soup: BeautifulSoup, base: str) -> list[dict]:
         })
     return jobs
 
-
 def parse_healthjobsuk(soup: BeautifulSoup, base: str) -> list[dict]:
     jobs = []
     for li in soup.select("li.hj-job"):
@@ -438,7 +493,6 @@ def parse_healthjobsuk(soup: BeautifulSoup, base: str) -> list[dict]:
             "needs_detail": False, "site": "healthjobsuk",
         })
     return jobs
-
 
 def parse_hscni(soup: BeautifulSoup, base: str) -> list[dict]:
     jobs = []
@@ -477,7 +531,6 @@ def parse_hscni(soup: BeautifulSoup, base: str) -> list[dict]:
         })
     return jobs
 
-
 def parse_scotland(soup: BeautifulSoup, base: str) -> list[dict]:
     seen: set = set()
     jobs = []
@@ -502,19 +555,13 @@ def parse_scotland(soup: BeautifulSoup, base: str) -> list[dict]:
             return txt(p)
         jobs.append({
             "title": title, "link": href,
-            "ref": detail("jobreference"),
-            "salary": detail("salary"),
-            "closing_date": detail("closingdate"),
-            "job_family": detail("department"),
-            "location": detail("location"),
-            "employment_type": detail("employmenttype"),
-            "hours": detail("hours"),
-            "employer": detail("school"),
-            "department": detail("shift"),
-            "needs_detail": False, "site": "scotland",
+            "ref": detail("jobreference"), "salary": detail("salary"),
+            "closing_date": detail("closingdate"), "job_family": detail("department"),
+            "location": detail("location"), "employment_type": detail("employmenttype"),
+            "hours": detail("hours"), "employer": detail("school"),
+            "department": detail("shift"), "needs_detail": False, "site": "scotland",
         })
     return jobs
-
 
 def parse_generic(soup: BeautifulSoup, base: str) -> list[dict]:
     jobs = []
@@ -527,7 +574,6 @@ def parse_generic(soup: BeautifulSoup, base: str) -> list[dict]:
                          "needs_detail": False, "site": "generic"})
     return jobs
 
-
 def get_parser(url: str):
     if "healthjobsuk.com" in url: return parse_healthjobsuk
     if "jobs.nhs.uk"      in url: return parse_nhsjobs
@@ -536,7 +582,6 @@ def get_parser(url: str):
     return parse_generic
 
 # ================= MESSAGE FORMATTERS ================= #
-
 def format_nhsjobs(job: dict) -> str:
     lines = ["🚨 <b>NEW NHS JOB — England</b>\n", f"🏥 <b>{job['title']}</b>"]
     if job.get("employer"):     lines.append(f"🏢 {job['employer']}")
@@ -549,11 +594,11 @@ def format_nhsjobs(job: dict) -> str:
 
 def format_healthjobsuk(job: dict) -> str:
     lines = ["🚨 <b>NEW NHS JOB — HealthJobsUK</b>\n", f"🏥 <b>{job['title']}</b>"]
-    if job.get("grade"):        lines.append(f"🎓 {job['grade']}")
-    if job.get("employer"):     lines.append(f"🏢 {job['employer']}")
-    if job.get("location"):     lines.append(f"📍 {job['location']}")
-    if job.get("speciality"):   lines.append(f"🔬 {job['speciality']}")
-    if job.get("salary"):       lines.append(f"💷 {job['salary']}")
+    if job.get("grade"):      lines.append(f"🎓 {job['grade']}")
+    if job.get("employer"):   lines.append(f"🏢 {job['employer']}")
+    if job.get("location"):   lines.append(f"📍 {job['location']}")
+    if job.get("speciality"): lines.append(f"🔬 {job['speciality']}")
+    if job.get("salary"):     lines.append(f"💷 {job['salary']}")
     lines.append(f"🔗 {job['link']}")
     return "\n".join(lines)
 
@@ -594,7 +639,14 @@ def format_message(job: dict) -> str:
     return "\n".join(lines)
 
 # ================= SINGLE-URL SCRAPER ================= #
-async def check_site(url: str, seen_jobs: set, browser, is_first_cycle: bool = False) -> int:
+async def check_site(url: str, seen_jobs: set, browser,
+                     is_first_cycle: bool = False,
+                     specialty_channel: dict | None = None) -> int:
+    """
+    Scrape one URL.
+    - specialty_channel=None  → main broad scan (Telegram only, existing logic)
+    - specialty_channel=dict  → specialty scan (Whop channel + delayed Telegram group)
+    """
     log(f"🔍 Checking: {url}")
     new_jobs = 0
     base   = get_base(url)
@@ -629,10 +681,19 @@ async def check_site(url: str, seen_jobs: set, browser, is_first_cycle: bool = F
                         continue
 
                 title = job.get("title", "")
-                goes_to_early = relevant_for_early(title)
-                goes_to_chat  = relevant_for_chat(title)
-                if not title or (not goes_to_early and not goes_to_chat):
+                if not title:
                     continue
+
+                if specialty_channel:
+                    # Specialty scan: filter against this channel's rules
+                    if not relevant_for_specialty(title, specialty_channel):
+                        continue
+                else:
+                    # Main scan: existing broad Telegram filter
+                    goes_to_early = relevant_for_early(title)
+                    goes_to_chat  = relevant_for_chat(title)
+                    if not goes_to_early and not goes_to_chat:
+                        continue
 
                 async with _seen_lock:
                     if job_id in seen_jobs:
@@ -643,13 +704,25 @@ async def check_site(url: str, seen_jobs: set, browser, is_first_cycle: bool = F
                     log(f"   👁️  SEEN (first cycle, no alert): {title}")
                 else:
                     msg = format_message(job)
-                    if goes_to_early:
-                        log(f"   🆕 NEW JOB [{job.get('site','?')}] → early + public: {title}")
+                    if specialty_channel:
+                        ch_name = specialty_channel["name"]
+                        whop_ch = specialty_channel["whop_channel"]
+                        log(f"   🆕 NEW JOB [{job.get('site','?')}] → {ch_name}: {title}")
+                        # Immediate: personal Telegram
                         _tg_queue.put_nowait((EARLY_CHAT_ID, msg))
-                        asyncio.create_task(_schedule_group_send(msg))
-                    elif goes_to_chat:
-                        log(f"   🆕 NEW JOB [{job.get('site','?')}] → public only: {title}")
-                        _tg_queue.put_nowait((CHAT_ID, msg))
+                        # Delayed: Telegram group + Whop specialty channel
+                        asyncio.create_task(_schedule_delayed_send(msg, [WHOP_CHANNEL_ID, whop_ch]))
+                    else:
+                        goes_to_early = relevant_for_early(title)
+                        goes_to_chat  = relevant_for_chat(title)
+                        if goes_to_early:
+                            log(f"   🆕 NEW JOB [{job.get('site','?')}] → early + public: {title}")
+                            _tg_queue.put_nowait((EARLY_CHAT_ID, msg))
+                            asyncio.create_task(_schedule_delayed_send(msg, [WHOP_CHANNEL_ID]))
+                        elif goes_to_chat:
+                            log(f"   🆕 NEW JOB [{job.get('site','?')}] → public only: {title}")
+                            _tg_queue.put_nowait((CHAT_ID, msg))
+
                 await async_save_seen(job_id)
                 new_jobs += 1
 
@@ -673,11 +746,13 @@ async def check_site(url: str, seen_jobs: set, browser, is_first_cycle: bool = F
 # ================= PARALLEL CYCLE ================= #
 _ctx_sem: asyncio.Semaphore | None = None
 
-async def _site_with_timeout(url: str, seen_jobs: set, browser, is_first_cycle: bool = False) -> int:
+async def _site_with_timeout(url: str, seen_jobs: set, browser,
+                              is_first_cycle: bool = False,
+                              specialty_channel: dict | None = None) -> int:
     async with _ctx_sem:
         try:
             return await asyncio.wait_for(
-                check_site(url, seen_jobs, browser, is_first_cycle),
+                check_site(url, seen_jobs, browser, is_first_cycle, specialty_channel),
                 timeout=SITE_HARD_LIMIT,
             )
         except asyncio.TimeoutError:
@@ -690,9 +765,19 @@ async def _site_with_timeout(url: str, seen_jobs: set, browser, is_first_cycle: 
 
 async def run_cycle(seen_jobs: set, browser, is_first_cycle: bool = False):
     label = " (first cycle — seeding seen list, no alerts)" if is_first_cycle else ""
-    log(f"🚀 Cycle — {len(URLS)} URLs, {MAX_CONCURRENT_CONTEXTS} concurrent contexts{label}…")
-    tasks   = [asyncio.create_task(_site_with_timeout(u, seen_jobs, browser, is_first_cycle)) for u in URLS]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    # Collect all tasks: main URLs + all specialty channel URLs
+    all_tasks = [
+        asyncio.create_task(_site_with_timeout(u, seen_jobs, browser, is_first_cycle))
+        for u in URLS
+    ]
+    for ch in SPECIALTY_CHANNELS:
+        for u in ch["urls"]:
+            all_tasks.append(asyncio.create_task(
+                _site_with_timeout(u, seen_jobs, browser, is_first_cycle, specialty_channel=ch)
+            ))
+
+    log(f"🚀 Cycle — {len(all_tasks)} tasks, {MAX_CONCURRENT_CONTEXTS} concurrent contexts{label}…")
+    results = await asyncio.gather(*all_tasks, return_exceptions=True)
     total   = sum(r for r in results if isinstance(r, int))
     log(f"✅ Cycle done — {total} new job(s) total.")
 
@@ -712,22 +797,7 @@ async def main():
     log("🚀 NHS JOB BOT STARTED")
     log(f"   Early-alert chat : {EARLY_CHAT_ID}  (immediate)")
     log(f"   Group chat       : {CHAT_ID}  (+{EARLY_DELAY}s delay)")
-
-    log("📡 Sending Whop startup test messages…")
-    _whop_all_channels = [
-        "chat_feed_1CbW9WpgbzoeU9E9KQ5WpT",  # Job Alerts Chat
-        "chat_feed_1CbZauPFt68E7nrkkwbHj5",   # Surgical Jobs
-        "chat_feed_1CbZb7mwvyDvY6rugrvuQr",   # Medicine Jobs
-        "chat_feed_1CbZbCEg9WepzQtqoxYjHH",   # Anesthesia and ICU Jobs
-        "chat_feed_1CbZbHh1CLMadCjC1VMCkU",   # Pediatrics Jobs
-        "chat_feed_1CbZbMAbDin4GKPrmer3bD",   # Obstetrics and Gynecology Jobs
-        "chat_feed_1CbZbQc9yXPUWpEE5NXPCB",   # Emergency Medicine Jobs
-        "chat_feed_1CbZba5ncFusdNv7sYB9uH",   # Ophthalmology Jobs
-        "chat_feed_1CbZbeHpodD6MoAZPueKFz",   # Ear, Nose and Throat (ENT) Jobs
-    ]
-    async with aiohttp.ClientSession() as _s:
-        for _ch in _whop_all_channels:
-            await _send_whop(_s, "🚀 NHS Job Bot is online and monitoring for new jobs.", channel_id=_ch)
+    log(f"   Specialty Whop channels : {len(SPECIALTY_CHANNELS)}")
 
     seen_jobs = load_seen()
     log(f"   Loaded {len(seen_jobs)} previously seen job IDs.")
