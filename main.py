@@ -196,15 +196,15 @@ async def telegram_consumer():
             await asyncio.sleep(TELEGRAM_SEND_INTERVAL)
 
 
-async def _send_whop(session: aiohttp.ClientSession, msg: str):
-    """Send a plain-text message to the Whop chat channel."""
+async def _send_whop(session: aiohttp.ClientSession, msg: str, channel_id: str = WHOP_CHANNEL_ID):
+    """Send a plain-text message to a Whop chat channel."""
     url = "https://api.whop.com/api/v1/messages"
     headers = {
         "Authorization": f"Bearer {WHOP_API_KEY}",
         "Content-Type": "application/json",
     }
     plain = re.sub(r"<[^>]+>", "", msg)
-    payload = {"content": plain, "channel_id": WHOP_CHANNEL_ID}
+    payload = {"content": plain, "channel_id": channel_id}
     backoff = 5
     for attempt in range(4):
         try:
@@ -712,6 +712,22 @@ async def main():
     log("🚀 NHS JOB BOT STARTED")
     log(f"   Early-alert chat : {EARLY_CHAT_ID}  (immediate)")
     log(f"   Group chat       : {CHAT_ID}  (+{EARLY_DELAY}s delay)")
+
+    log("📡 Sending Whop startup test messages…")
+    _whop_all_channels = [
+        "chat_feed_1CbW9WpgbzoeU9E9KQ5WpT",  # Job Alerts Chat
+        "chat_feed_1CbZauPFt68E7nrkkwbHj5",   # Surgical Jobs
+        "chat_feed_1CbZb7mwvyDvY6rugrvuQr",   # Medicine Jobs
+        "chat_feed_1CbZbCEg9WepzQtqoxYjHH",   # Anesthesia and ICU Jobs
+        "chat_feed_1CbZbHh1CLMadCjC1VMCkU",   # Pediatrics Jobs
+        "chat_feed_1CbZbMAbDin4GKPrmer3bD",   # Obstetrics and Gynecology Jobs
+        "chat_feed_1CbZbQc9yXPUWpEE5NXPCB",   # Emergency Medicine Jobs
+        "chat_feed_1CbZba5ncFusdNv7sYB9uH",   # Ophthalmology Jobs
+        "chat_feed_1CbZbeHpodD6MoAZPueKFz",   # Ear, Nose and Throat (ENT) Jobs
+    ]
+    async with aiohttp.ClientSession() as _s:
+        for _ch in _whop_all_channels:
+            await _send_whop(_s, "🚀 NHS Job Bot is online and monitoring for new jobs.", channel_id=_ch)
 
     seen_jobs = load_seen()
     log(f"   Loaded {len(seen_jobs)} previously seen job IDs.")
