@@ -127,7 +127,7 @@ SPECIALTY_CHANNELS = [
             "https://jobs.hscni.net/Search?SearchCatID=0",
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
-        "specialties": ["dependency", "intensive care", "critical care", "icu", "anesthesia", "palliative"],
+        "specialties": ["dependency", "intensive care", "critical care", "icu", "hdu", "anesthesia", "anaesthesia", "anaesthetic", "anaesthetics", "palliative"],
         "grades":      ["fy1", "fy2", "foundation", "st4", "st5", "st6", "st7", "ct1", "ct2", "ct3", "st1", "st2", "st3", "registrar", "trust", "doctor", "grade", "clinical", "fellow", "specialty", "junior", "locum", "teaching", "senior"],
         "excludes":    ["consultant", "nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
     },
