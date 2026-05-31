@@ -305,13 +305,12 @@ async def _send_whop(session: aiohttp.ClientSession, msg: str, channel_id: str =
             backoff *= 2
 
 
-async def _schedule_delayed_send(msg: str, whop_channels: list[str]):
-    """Wait EARLY_DELAY then send to Telegram group + all specified Whop channels."""
+async def _schedule_group_send(msg: str):
+    """Wait EARLY_DELAY then send to Telegram group + main Whop channel."""
     await asyncio.sleep(EARLY_DELAY)
     _tg_queue.put_nowait((CHAT_ID, msg))
     async with aiohttp.ClientSession() as session:
-        for ch in whop_channels:
-            await _send_whop(session, msg, channel_id=ch)
+        await _send_whop(session, msg, channel_id=WHOP_CHANNEL_ID)
 
 
 # ================= FILTER LOGIC ================= #
@@ -639,13 +638,17 @@ def format_message(job: dict) -> str:
     return "\n".join(lines)
 
 # ================= SINGLE-URL SCRAPER ================= #
-async def check_site(url: str, seen_jobs: set, browser,
-                     is_first_cycle: bool = False,
-                     specialty_channel: dict | None = None) -> int:
+async def check_site(url: str, seen_jobs: set, browser, is_first_cycle: bool = False) -> int:
     """
-    Scrape one URL.
-    - specialty_channel=None  → main broad scan (Telegram only, existing logic)
-    - specialty_channel=dict  → specialty scan (Whop channel + delayed Telegram group)
+    Scrape one URL. For each unseen job, evaluate ALL filters at once and
+    dispatch to every matching destination in a single pass.
+
+    Routing rules:
+      - Early filter match  → personal Telegram immediately;
+                              Telegram group + main Whop channel after EARLY_DELAY
+      - Specialty match (no early) → that specialty's Whop channel immediately
+      - Broad filter only   → Telegram group immediately
+    A job can match early AND one or more specialties simultaneously.
     """
     log(f"🔍 Checking: {url}")
     new_jobs = 0
@@ -684,17 +687,16 @@ async def check_site(url: str, seen_jobs: set, browser,
                 if not title:
                     continue
 
-                if specialty_channel:
-                    # Specialty scan: filter against this channel's rules
-                    if not relevant_for_specialty(title, specialty_channel):
-                        continue
-                else:
-                    # Main scan: existing broad Telegram filter
-                    goes_to_early = relevant_for_early(title)
-                    goes_to_chat  = relevant_for_chat(title)
-                    if not goes_to_early and not goes_to_chat:
-                        continue
+                # Evaluate all filters before touching seen_jobs
+                goes_early    = relevant_for_early(title)
+                goes_chat     = relevant_for_chat(title)
+                matched_specs = [ch for ch in SPECIALTY_CHANNELS
+                                 if relevant_for_specialty(title, ch)]
 
+                if not goes_early and not goes_chat and not matched_specs:
+                    continue
+
+                # Mark seen atomically — only one task wins for a given job_id
                 async with _seen_lock:
                     if job_id in seen_jobs:
                         continue
@@ -704,24 +706,26 @@ async def check_site(url: str, seen_jobs: set, browser,
                     log(f"   👁️  SEEN (first cycle, no alert): {title}")
                 else:
                     msg = format_message(job)
-                    if specialty_channel:
-                        ch_name = specialty_channel["name"]
-                        whop_ch = specialty_channel["whop_channel"]
-                        log(f"   🆕 NEW JOB [{job.get('site','?')}] → {ch_name}: {title}")
-                        # Immediate: personal Telegram
+                    destinations = []
+
+                    if goes_early:
+                        destinations.append("early+group+Whop")
                         _tg_queue.put_nowait((EARLY_CHAT_ID, msg))
-                        # Delayed: Telegram group + Whop specialty channel
-                        asyncio.create_task(_schedule_delayed_send(msg, [WHOP_CHANNEL_ID, whop_ch]))
-                    else:
-                        goes_to_early = relevant_for_early(title)
-                        goes_to_chat  = relevant_for_chat(title)
-                        if goes_to_early:
-                            log(f"   🆕 NEW JOB [{job.get('site','?')}] → early + public: {title}")
-                            _tg_queue.put_nowait((EARLY_CHAT_ID, msg))
-                            asyncio.create_task(_schedule_delayed_send(msg, [WHOP_CHANNEL_ID]))
-                        elif goes_to_chat:
-                            log(f"   🆕 NEW JOB [{job.get('site','?')}] → public only: {title}")
-                            _tg_queue.put_nowait((CHAT_ID, msg))
+                        asyncio.create_task(_schedule_group_send(msg))
+
+                    if not goes_early and matched_specs:
+                        # Specialty Whop channels — send immediately
+                        for ch in matched_specs:
+                            destinations.append(ch["name"])
+                        async with aiohttp.ClientSession() as _s:
+                            for ch in matched_specs:
+                                await _send_whop(_s, msg, channel_id=ch["whop_channel"])
+
+                    if not goes_early and goes_chat and not matched_specs:
+                        destinations.append("group-only")
+                        _tg_queue.put_nowait((CHAT_ID, msg))
+
+                    log(f"   🆕 NEW JOB [{job.get('site','?')}] → {', '.join(destinations)}: {title}")
 
                 await async_save_seen(job_id)
                 new_jobs += 1
@@ -746,13 +750,11 @@ async def check_site(url: str, seen_jobs: set, browser,
 # ================= PARALLEL CYCLE ================= #
 _ctx_sem: asyncio.Semaphore | None = None
 
-async def _site_with_timeout(url: str, seen_jobs: set, browser,
-                              is_first_cycle: bool = False,
-                              specialty_channel: dict | None = None) -> int:
+async def _site_with_timeout(url: str, seen_jobs: set, browser, is_first_cycle: bool = False) -> int:
     async with _ctx_sem:
         try:
             return await asyncio.wait_for(
-                check_site(url, seen_jobs, browser, is_first_cycle, specialty_channel),
+                check_site(url, seen_jobs, browser, is_first_cycle),
                 timeout=SITE_HARD_LIMIT,
             )
         except asyncio.TimeoutError:
@@ -764,20 +766,14 @@ async def _site_with_timeout(url: str, seen_jobs: set, browser,
 
 
 async def run_cycle(seen_jobs: set, browser, is_first_cycle: bool = False):
+    # Deduplicate URLs across main + all specialty channels — scrape each URL once
+    all_urls = list(dict.fromkeys(
+        URLS + [u for ch in SPECIALTY_CHANNELS for u in ch["urls"]]
+    ))
     label = " (first cycle — seeding seen list, no alerts)" if is_first_cycle else ""
-    # Collect all tasks: main URLs + all specialty channel URLs
-    all_tasks = [
-        asyncio.create_task(_site_with_timeout(u, seen_jobs, browser, is_first_cycle))
-        for u in URLS
-    ]
-    for ch in SPECIALTY_CHANNELS:
-        for u in ch["urls"]:
-            all_tasks.append(asyncio.create_task(
-                _site_with_timeout(u, seen_jobs, browser, is_first_cycle, specialty_channel=ch)
-            ))
-
-    log(f"🚀 Cycle — {len(all_tasks)} tasks, {MAX_CONCURRENT_CONTEXTS} concurrent contexts{label}…")
-    results = await asyncio.gather(*all_tasks, return_exceptions=True)
+    log(f"🚀 Cycle — {len(all_urls)} unique URLs, {MAX_CONCURRENT_CONTEXTS} concurrent contexts{label}…")
+    tasks   = [asyncio.create_task(_site_with_timeout(u, seen_jobs, browser, is_first_cycle)) for u in all_urls]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
     total   = sum(r for r in results if isinstance(r, int))
     log(f"✅ Cycle done — {total} new job(s) total.")
 
