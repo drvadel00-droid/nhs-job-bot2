@@ -334,11 +334,14 @@ def relevant_for_early(title: str) -> bool:
         return False
     return True
 
+def _word_match(keyword: str, text: str) -> bool:
+    return bool(re.search(r'\b' + re.escape(keyword) + r'\b', text))
+
 def relevant_for_specialty(title: str, ch: dict) -> bool:
     t = title.lower()
     if any(ex in t for ex in ch["excludes"]):
         return False
-    if not any(sp in t for sp in ch["specialties"]):
+    if not any(_word_match(sp, t) for sp in ch["specialties"]):
         return False
     if not any(gr in t for gr in ch["grades"]):
         return False
