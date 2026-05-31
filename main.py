@@ -334,12 +334,14 @@ async def _send_whop(session: aiohttp.ClientSession, msg: str, channel_id: str =
             backoff *= 2
 
 
-async def _schedule_group_send(msg: str):
-    """Wait EARLY_DELAY then send to Telegram group + main Whop channel."""
+async def _schedule_group_send(msg: str, specialty_channels: list = None):
+    """Wait EARLY_DELAY then send to Telegram group + main Whop channel + any specialty channels."""
     await asyncio.sleep(EARLY_DELAY)
     _tg_queue.put_nowait((CHAT_ID, msg))
     async with aiohttp.ClientSession() as session:
         await _send_whop(session, msg, channel_id=WHOP_CHANNEL_ID)
+        for ch in (specialty_channels or []):
+            await _send_whop(session, msg, channel_id=ch["whop_channel"])
 
 
 # ================= FILTER LOGIC ================= #
@@ -741,25 +743,21 @@ async def check_site(url: str, seen_jobs: set, browser, is_first_cycle: bool = F
                     destinations = []
 
                     if goes_early:
-                        destinations.append("early")
+                        destinations.append("early+group+Whop(delayed)")
+                        if matched_specs:
+                            destinations.extend(f"{ch['name']}(delayed)" for ch in matched_specs)
                         _tg_queue.put_nowait((EARLY_CHAT_ID, msg))
-                        asyncio.create_task(_schedule_group_send(msg))
-                    elif goes_chat:
-                        destinations.append("group")
-                        _tg_queue.put_nowait((CHAT_ID, msg))
-
-                    if matched_specs:
-                        for ch in matched_specs:
-                            destinations.append(ch["name"])
-                        async with aiohttp.ClientSession() as _s:
+                        asyncio.create_task(_schedule_group_send(msg, matched_specs))
+                    else:
+                        if goes_chat:
+                            destinations.append("group")
+                            _tg_queue.put_nowait((CHAT_ID, msg))
+                        if matched_specs:
                             for ch in matched_specs:
-                                await _send_whop(_s, msg, channel_id=ch["whop_channel"])
-
-                    if goes_early and goes_chat:
-                        destinations.append("group (delayed)")
-
-                    if not goes_early and not goes_chat and not matched_specs:
-                        pass  # already filtered above
+                                destinations.append(ch["name"])
+                            async with aiohttp.ClientSession() as _s:
+                                for ch in matched_specs:
+                                    await _send_whop(_s, msg, channel_id=ch["whop_channel"])
 
                     log(f"   🆕 NEW JOB [{job.get('site','?')}] → {', '.join(destinations)}: {title}")
 
