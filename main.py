@@ -741,21 +741,25 @@ async def check_site(url: str, seen_jobs: set, browser, is_first_cycle: bool = F
                     destinations = []
 
                     if goes_early:
-                        destinations.append("early+group+Whop")
+                        destinations.append("early")
                         _tg_queue.put_nowait((EARLY_CHAT_ID, msg))
                         asyncio.create_task(_schedule_group_send(msg))
+                    elif goes_chat:
+                        destinations.append("group")
+                        _tg_queue.put_nowait((CHAT_ID, msg))
 
-                    if not goes_early and matched_specs:
-                        # Specialty Whop channels — send immediately
+                    if matched_specs:
                         for ch in matched_specs:
                             destinations.append(ch["name"])
                         async with aiohttp.ClientSession() as _s:
                             for ch in matched_specs:
                                 await _send_whop(_s, msg, channel_id=ch["whop_channel"])
 
-                    if not goes_early and goes_chat and not matched_specs:
-                        destinations.append("group-only")
-                        _tg_queue.put_nowait((CHAT_ID, msg))
+                    if goes_early and goes_chat:
+                        destinations.append("group (delayed)")
+
+                    if not goes_early and not goes_chat and not matched_specs:
+                        pass  # already filtered above
 
                     log(f"   🆕 NEW JOB [{job.get('site','?')}] → {', '.join(destinations)}: {title}")
 
