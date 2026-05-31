@@ -750,8 +750,10 @@ async def check_site(url: str, seen_jobs: set, browser, is_first_cycle: bool = F
                         asyncio.create_task(_schedule_group_send(msg, matched_specs))
                     else:
                         if goes_chat:
-                            destinations.append("group")
+                            destinations.append("group+Whop")
                             _tg_queue.put_nowait((CHAT_ID, msg))
+                            async with aiohttp.ClientSession() as _s:
+                                await _send_whop(_s, msg, channel_id=WHOP_CHANNEL_ID)
                         if matched_specs:
                             for ch in matched_specs:
                                 destinations.append(ch["name"])
