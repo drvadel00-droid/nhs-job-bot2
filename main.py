@@ -273,11 +273,17 @@ async def telegram_consumer():
 
 
 # ================= WHOP ================= #
+def _html_to_whop_md(msg: str) -> str:
+    """Convert Telegram HTML to Whop markdown."""
+    text = re.sub(r"<b>(.*?)</b>", r"**\1**", msg, flags=re.DOTALL)
+    text = re.sub(r"<i>(.*?)</i>", r"*\1*",   text, flags=re.DOTALL)
+    text = re.sub(r"<[^>]+>", "", text)
+    return text
+
 async def _send_whop(session: aiohttp.ClientSession, msg: str, channel_id: str = WHOP_CHANNEL_ID):
     url = "https://api.whop.com/api/v1/messages"
     headers = {"Authorization": f"Bearer {WHOP_API_KEY}", "Content-Type": "application/json"}
-    plain = re.sub(r"<[^>]+>", "", msg)
-    payload = {"content": plain, "channel_id": channel_id}
+    payload = {"content": _html_to_whop_md(msg), "channel_id": channel_id}
     backoff = 5
     for attempt in range(4):
         try:
