@@ -41,7 +41,7 @@ URLS = [
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=558&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=110250&_srt=startdate&_sd=a",
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=581&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=44291&_srt=startdate&_sd=a",
     "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
-    "https://jobs.hscni.net/Search?SearchCatID=0",
+    "https://jobs.hscni.net/Search?keyword=&SearchCatID=63&SearchOrgID=0&SearchBandID=0&Order=Added",
     "https://apply.jobs.scot.nhs.uk/Home/Job",
 ]
 
@@ -68,6 +68,70 @@ CHAT_EXCLUDE_KEYWORDS = [
     "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition",
     "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker",
     "pharmacy", "chief", "counseling", "principal",
+    # admin, clerical & office
+    "ward clerk", "health records", "medical records", "clinical coder",
+    "coding officer", "personal assistant", "pals officer", "mdt coordinator",
+    "practice manager", "voluntary services", "call handler", "call taker",
+    # finance
+    "finance officer", "finance analyst", "finance assistant", "finance manager",
+    "accountant", "procurement", "commissioning manager", "payroll",
+    # human resources
+    "hr assistant", "hr advisor", "hr manager", "hr administrator",
+    "workforce advisor", "resourcing", "recruitment advisor",
+    "learning and development", "organisational development",
+    # IT & informatics
+    "it support", "im&t analyst", "information analyst", "systems analyst",
+    "network manager", "data analyst", "informatics", "digital", "programmer",
+    "developer", "cybersecurity", "helpdesk",
+    # communications & PR
+    "communications officer", "pr executive", "media officer", "graphic designer",
+    "complaints officer", "engagement officer",
+    # estates & facilities
+    "porter", "domestic", "cleaner", "catering", "laundry", "facilities manager",
+    "estates manager", "estates officer", "maintenance engineer", "electrician",
+    "plumber", "gardener", "security officer", "driver", "transport",
+    "fm assistant", "switchboard", "sterile services", "decontamination",
+    # nursing & midwifery
+    "healthcare assistant", "healthcare support worker", "nursing associate",
+    "ward sister", "charge nurse", "staff nurse", "district nurse", "health visitor",
+    "school nurse", "community nurse", "maternity support worker",
+    # allied health professions
+    "occupational therapist", "dietitian", "podiatrist",
+    "speech and language therapist", "orthoptist", "optometrist", "paramedic",
+    "ambulance practitioner", "prosthetist", "orthotist",
+    "operating department practitioner", "odp", "art therapist", "music therapist",
+    "dramatherapist", "play specialist", "sexual health adviser",
+    # healthcare science & laboratory
+    "biomedical scientist", "clinical scientist", "phlebotomist",
+    "healthcare scientist", "medical physicist", "clinical physiologist",
+    "cardiac physiologist", "respiratory physiologist", "cytology screener",
+    "pathology technician", "mortuary technician", "genetic counsellor", "audiologist",
+    "medical engineering technician", "laboratory assistant", "technician",
+    "physiologist",
+    # pharmacy
+    "pharmacy technician", "pharmacy support worker", "dispensing assistant",
+    "medicines management",
+    # psychology, mental health & chaplaincy
+    "psychologist", "psychotherapist", "psychological wellbeing practitioner",
+    "mental health worker", "chaplain", "pastoral", "welfare officer",
+    # dental
+    "dentist", "dental", "dental technician", "dental nurse", "dental therapist",
+    "oral health practitioner", "dental hygienist", "orthodontic therapist",
+    # management & leadership
+    "head of service", "operations manager", "general manager", "service manager",
+    "improvement manager", "programme manager", "project manager", "project officer",
+    # library & information
+    "librarian", "library technician", "knowledge officer",
+    # public health & health improvement
+    "public health practitioner", "health improvement practitioner",
+    "health promotion officer", "screening practitioner", "public health researcher",
+    "clinical governance", "quality improvement", "clinical audit",
+    # medical associate professions
+    "physician associate", "surgical care practitioner",
+    "advanced clinical practitioner", "advanced nurse practitioner",
+    "advanced practitioner", "anaesthesia associate",
+    # misc
+    "gp",
 ]
 
 EARLY_SPECIALTIES = [
@@ -88,6 +152,143 @@ EARLY_EXCLUDE_KEYWORDS = [
     "practitioner", "nutritionist", "nutrition", "coordinator", "therapist",
     "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief",
     "psychiatry", "maxillofacial", "counseling", "principal",
+    # admin, clerical & office
+    "ward clerk", "health records", "medical records", "clinical coder",
+    "coding officer", "personal assistant", "pals officer", "mdt coordinator",
+    "practice manager", "voluntary services", "call handler", "call taker",
+    # finance
+    "finance officer", "finance analyst", "finance assistant", "finance manager",
+    "accountant", "procurement", "commissioning manager", "payroll",
+    # human resources
+    "hr assistant", "hr advisor", "hr manager", "hr administrator",
+    "workforce advisor", "resourcing", "recruitment advisor",
+    "learning and development", "organisational development",
+    # IT & informatics
+    "it support", "im&t analyst", "information analyst", "systems analyst",
+    "network manager", "data analyst", "informatics", "digital", "programmer",
+    "developer", "cybersecurity", "helpdesk",
+    # communications & PR
+    "communications officer", "pr executive", "media officer", "graphic designer",
+    "complaints officer", "engagement officer",
+    # estates & facilities
+    "porter", "domestic", "cleaner", "catering", "laundry", "facilities manager",
+    "estates manager", "estates officer", "maintenance engineer", "electrician",
+    "plumber", "gardener", "security officer", "driver", "transport",
+    "fm assistant", "switchboard", "sterile services", "decontamination",
+    # nursing & midwifery
+    "healthcare assistant", "healthcare support worker", "nursing associate",
+    "ward sister", "charge nurse", "staff nurse", "district nurse", "health visitor",
+    "school nurse", "community nurse", "maternity support worker",
+    # allied health professions
+    "occupational therapist", "dietitian", "podiatrist",
+    "speech and language therapist", "orthoptist", "optometrist", "paramedic",
+    "ambulance practitioner", "prosthetist", "orthotist",
+    "operating department practitioner", "odp", "art therapist", "music therapist",
+    "dramatherapist", "play specialist", "sexual health adviser",
+    # healthcare science & laboratory
+    "biomedical scientist", "clinical scientist", "phlebotomist",
+    "healthcare scientist", "medical physicist", "clinical physiologist",
+    "cardiac physiologist", "respiratory physiologist", "cytology screener",
+    "pathology technician", "mortuary technician", "genetic counsellor", "audiologist",
+    "medical engineering technician", "laboratory assistant", "technician",
+    "physiologist",
+    # pharmacy
+    "pharmacy technician", "pharmacy support worker", "dispensing assistant",
+    "medicines management",
+    # psychology, mental health & chaplaincy
+    "psychologist", "psychotherapist", "psychological wellbeing practitioner",
+    "mental health worker", "chaplain", "pastoral", "welfare officer",
+    # dental
+    "dentist", "dental", "dental technician", "dental nurse", "dental therapist",
+    "oral health practitioner", "dental hygienist", "orthodontic therapist",
+    # management & leadership
+    "head of service", "operations manager", "general manager", "service manager",
+    "improvement manager", "programme manager", "project manager", "project officer",
+    # library & information
+    "librarian", "library technician", "knowledge officer",
+    # public health & health improvement
+    "public health practitioner", "health improvement practitioner",
+    "health promotion officer", "screening practitioner", "public health researcher",
+    "clinical governance", "quality improvement", "clinical audit",
+    # medical associate professions
+    "physician associate", "surgical care practitioner",
+    "advanced clinical practitioner", "advanced nurse practitioner",
+    "advanced practitioner", "anaesthesia associate",
+    # misc
+    "gp",
+]
+
+# ================= SHARED EXCLUDE LIST ================= #
+_COMMON_EXCLUDES = [
+    "consultant", "nurse", "midwife", "assistant", "manager", "director", "admin",
+    "physiotherapist", "radiographer", "lead", "scientist", "receptionist",
+    "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition",
+    "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker",
+    "pharmacy", "chief", "counseling", "principal",
+    # admin, clerical & office
+    "ward clerk", "health records", "medical records", "clinical coder",
+    "coding officer", "personal assistant", "pals officer", "mdt coordinator",
+    "practice manager", "voluntary services", "call handler", "call taker",
+    # finance
+    "finance officer", "finance analyst", "finance assistant", "finance manager",
+    "accountant", "procurement", "commissioning manager", "payroll",
+    # human resources
+    "hr assistant", "hr advisor", "hr manager", "hr administrator",
+    "workforce advisor", "resourcing", "recruitment advisor",
+    "learning and development", "organisational development",
+    # IT & informatics
+    "it support", "im&t analyst", "information analyst", "systems analyst",
+    "network manager", "data analyst", "informatics", "digital", "programmer",
+    "developer", "cybersecurity", "helpdesk",
+    # communications & PR
+    "communications officer", "pr executive", "media officer", "graphic designer",
+    "complaints officer", "engagement officer",
+    # estates & facilities
+    "porter", "domestic", "cleaner", "catering", "laundry", "facilities manager",
+    "estates manager", "estates officer", "maintenance engineer", "electrician",
+    "plumber", "gardener", "security officer", "driver", "transport",
+    "fm assistant", "switchboard", "sterile services", "decontamination",
+    # nursing & midwifery
+    "healthcare assistant", "healthcare support worker", "nursing associate",
+    "ward sister", "charge nurse", "staff nurse", "district nurse", "health visitor",
+    "school nurse", "community nurse", "maternity support worker",
+    # allied health professions
+    "occupational therapist", "dietitian", "podiatrist",
+    "speech and language therapist", "orthoptist", "optometrist", "paramedic",
+    "ambulance practitioner", "prosthetist", "orthotist",
+    "operating department practitioner", "odp", "art therapist", "music therapist",
+    "dramatherapist", "play specialist", "sexual health adviser",
+    # healthcare science & laboratory
+    "biomedical scientist", "clinical scientist", "phlebotomist",
+    "healthcare scientist", "medical physicist", "clinical physiologist",
+    "cardiac physiologist", "respiratory physiologist", "cytology screener",
+    "pathology technician", "mortuary technician", "genetic counsellor", "audiologist",
+    "medical engineering technician", "laboratory assistant", "technician",
+    "physiologist",
+    # pharmacy
+    "pharmacy technician", "pharmacy support worker", "dispensing assistant",
+    "medicines management",
+    # psychology, mental health & chaplaincy
+    "psychologist", "psychotherapist", "psychological wellbeing practitioner",
+    "mental health worker", "chaplain", "pastoral", "welfare officer",
+    # dental
+    "dentist", "dental", "dental technician", "dental nurse", "dental therapist",
+    "oral health practitioner", "dental hygienist", "orthodontic therapist",
+    # management & leadership
+    "head of service", "operations manager", "general manager", "service manager",
+    "improvement manager", "programme manager", "project manager", "project officer",
+    # library & information
+    "librarian", "library technician", "knowledge officer",
+    # public health & health improvement
+    "public health practitioner", "health improvement practitioner",
+    "health promotion officer", "screening practitioner", "public health researcher",
+    "clinical governance", "quality improvement", "clinical audit",
+    # medical associate professions
+    "physician associate", "surgical care practitioner",
+    "advanced clinical practitioner", "advanced nurse practitioner",
+    "advanced practitioner", "anaesthesia associate",
+    # misc
+    "gp",
 ]
 
 # ================= SPECIALTY WHOP CHANNELS ================= #
@@ -101,11 +302,11 @@ SPECIALTY_CHANNELS = [
         "urls": [
             "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=594&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=19024&_srt=startdate&_sd=a",
             "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
-            "https://jobs.hscni.net/Search?SearchCatID=0",
+            "https://jobs.hscni.net/Search?keyword=&SearchCatID=63&SearchOrgID=0&SearchBandID=0&Order=Added",
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
         "specialties": [ "surgery", "general surgery", "trauma", "orthopaedic", "plastic", "vascular", "urology", "neurosurgery", "pediatric surgery"],
-        "excludes":    ["nurse", "consultant", "oral", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal", "dentist"],
+        "excludes":    _COMMON_EXCLUDES + ["oral"],
     },
     {
         "name": "Medicine Jobs",
@@ -113,7 +314,7 @@ SPECIALTY_CHANNELS = [
         "urls": [
             "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=558&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=59162&_srt=startdate&_sd=a",
             "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
-            "https://jobs.hscni.net/Search?SearchCatID=0",
+            "https://jobs.hscni.net/Search?keyword=&SearchCatID=63&SearchOrgID=0&SearchBandID=0&Order=Added",
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
         "specialties": [    "general medicine", "internal medicine", "acute medicine", "acute medical",
@@ -131,12 +332,8 @@ SPECIALTY_CHANNELS = [
     "infectious diseases",
     "rehabilitation medicine",
     "care of the elderly", "geriatric", "medicine for the elderly"],
-        "excludes":    ["consultant", "nurse", "midwife", "assistant", "manager", "director",
-    "admin", "physiotherapist", "radiographer", "lead", "scientist", 
-    "receptionist", "housekeeper", "cook", "clerk", "practitioner", 
-    "nutritionist", "nutrition", "coordinator", "therapist", "secretary", 
-    "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal",
-    "theatre", "operating", "surgeon", "surgery", "surgical", "orthopaedic", 
+        "excludes":    _COMMON_EXCLUDES + [
+    "theatre", "operating", "surgeon", "surgery", "surgical", "orthopaedic",
     "urology", "plastics", "neurosurgery", "ophthalmology", "ent", "otolaryngology",
     "emergency medicine", "a&e", "accident & emergency", "accident and emergency",
     "intensive care", "icu", "hdu", "critical care", "anaesthetics", "anaesthesia",
@@ -149,11 +346,11 @@ SPECIALTY_CHANNELS = [
             "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=555&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=88194",
             "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=535&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=91141",
             "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
-            "https://jobs.hscni.net/Search?SearchCatID=0",
+            "https://jobs.hscni.net/Search?keyword=&SearchCatID=63&SearchOrgID=0&SearchBandID=0&Order=Added",
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
         "specialties": ["dependency", "intensive care", "critical care", "icu", "hdu", "anesthesia", "anaesthesia", "anaesthetic", "anaesthetics", "palliative"],
-        "excludes":    ["consultant", "nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
+        "excludes":    _COMMON_EXCLUDES,
     },
     {
         "name": "Pediatrics Jobs",
@@ -161,11 +358,11 @@ SPECIALTY_CHANNELS = [
         "urls": [
             "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=578&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=193183",
             "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
-            "https://jobs.hscni.net/Search?SearchCatID=0",
+            "https://jobs.hscni.net/Search?keyword=&SearchCatID=63&SearchOrgID=0&SearchBandID=0&Order=Added",
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
         "specialties": ["pediatric", "pediatrics", "paediatric", "paediatrics"],
-        "excludes":    ["consultant", "nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
+        "excludes":    _COMMON_EXCLUDES,
     },
     {
         "name": "Obstetrics and Gynecology Jobs",
@@ -173,11 +370,11 @@ SPECIALTY_CHANNELS = [
         "urls": [
             "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=567&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=198861",
             "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
-            "https://jobs.hscni.net/Search?SearchCatID=0",
+            "https://jobs.hscni.net/Search?keyword=&SearchCatID=63&SearchOrgID=0&SearchBandID=0&Order=Added",
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
         "specialties": ["obstetrics", "gynaecology", "gynecology", "obs", "gynae", "maternity"],
-        "excludes":    ["consultant", "nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
+        "excludes":    _COMMON_EXCLUDES,
     },
     {
         "name": "Emergency Medicine Jobs",
@@ -185,11 +382,11 @@ SPECIALTY_CHANNELS = [
         "urls": [
             "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=534&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=204916",
             "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
-            "https://jobs.hscni.net/Search?SearchCatID=0",
+            "https://jobs.hscni.net/Search?keyword=&SearchCatID=63&SearchOrgID=0&SearchBandID=0&Order=Added",
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
         "specialties": ["emergency", "accident", "a&e", "ed ", "resus", "accident & emergency", "accident and emergency", "pemed"],
-        "excludes":    ["consultant", "nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
+        "excludes":    _COMMON_EXCLUDES,
     },
     {
         "name": "Ophthalmology Jobs",
@@ -197,11 +394,11 @@ SPECIALTY_CHANNELS = [
         "urls": [
             "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=570&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=212800",
             "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
-            "https://jobs.hscni.net/Search?SearchCatID=0",
+            "https://jobs.hscni.net/Search?keyword=&SearchCatID=63&SearchOrgID=0&SearchBandID=0&Order=Added",
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
         "specialties": ["ophthalmology", "eyes", "eye clinic", "eye", "vitreoretinal"],
-        "excludes":    ["consultant", "nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
+        "excludes":    _COMMON_EXCLUDES,
     },
     {
         "name": "ENT Jobs",
@@ -209,11 +406,11 @@ SPECIALTY_CHANNELS = [
         "urls": [
             "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=1088&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=218046",
             "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=40-50%2C50-60%2C60-70&searchFormType=sortBy&sort=publicationDateDesc&language=en",
-            "https://jobs.hscni.net/Search?SearchCatID=0",
+            "https://jobs.hscni.net/Search?keyword=&SearchCatID=63&SearchOrgID=0&SearchBandID=0&Order=Added",
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
         "specialties": ["ent", "ear nose throat", "otolaryngology", "head and neck surgery"],
-        "excludes":    ["consultant", "nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
+        "excludes":    _COMMON_EXCLUDES,
     },
 ]
 
@@ -345,7 +542,7 @@ def relevant_for_chat(title: str) -> bool:
     t = title.lower()
     if any(ex in t for ex in CHAT_EXCLUDE_KEYWORDS):
         return False
-    if not any(sp in t for sp in CHAT_SPECIALTIES):
+    if not any(_word_match(sp, t) for sp in CHAT_SPECIALTIES):
         return False
     return True
 
@@ -353,7 +550,7 @@ def relevant_for_early(title: str) -> bool:
     t = title.lower()
     if any(ex in t for ex in EARLY_EXCLUDE_KEYWORDS):
         return False
-    if not any(sp in t for sp in EARLY_SPECIALTIES):
+    if not any(_word_match(sp, t) for sp in EARLY_SPECIALTIES):
         return False
     if not any(gr in t for gr in EARLY_GRADE_KEYWORDS):
         return False
@@ -713,11 +910,18 @@ async def check_site(url: str, seen_jobs: set, browser, is_first_cycle: bool = F
                 if not title:
                     continue
 
+                # Combine title + speciality/job_family fields for richer matching
+                search_text = " ".join(filter(None, [
+                    title,
+                    job.get("speciality", ""),
+                    job.get("job_family", ""),
+                ]))
+
                 # Evaluate all filters before touching seen_jobs
-                goes_early    = relevant_for_early(title)
-                goes_chat     = relevant_for_chat(title)
+                goes_early    = relevant_for_early(search_text)
+                goes_chat     = relevant_for_chat(search_text)
                 matched_specs = [ch for ch in SPECIALTY_CHANNELS
-                                 if relevant_for_specialty(title, ch)]
+                                 if relevant_for_specialty(search_text, ch)]
 
                 if not goes_early and not goes_chat and not matched_specs:
                     continue
