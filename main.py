@@ -32,6 +32,7 @@ ua = UserAgent()
 
 # ================= MAIN BROAD URLs (existing) ================= #
 URLS = [
+    "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=411&_srt=startdate&_sd=a",
     "https://www.healthjobsuk.com/job_list?JobSearch_Submit=Search&_srt=publicationdate&_sd=desc",
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=534&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=64082&_srt=startdate&_sd=d",
     "https://www.healthjobsuk.com/job_list?JobSearch_q=&JobSearch_d=737&JobSearch_g=&JobSearch_re=_POST&JobSearch_re_0=1&JobSearch_re_1=1-_-_-&JobSearch_re_2=1-_-_--_-_-&JobSearch_Submit=Search&_tr=JobSearch&_ts=81534&_srt=startdate&_sd=a",
@@ -51,12 +52,15 @@ CHAT_SPECIALTIES = [
     "gastro", "neurology", "paediatric", "haematology", "intensive care",
     "critical care", "icu", "vascular", "urology", "obstetrics", "gynaecology",
     "gynecology", "anesthesia",
-]
-CHAT_GRADE_KEYWORDS = [
-    "fy1", "fy2", "foundation", "st4", "st5", "st6", "st7",
-    "ct1", "ct2", "ct3", "st1", "st2", "st3", "registrar",
-    "trust", "doctor", "grade", "clinical", "fellow", "specialty",
-    "junior", "locum", "teaching", "senior",
+    "neurosurgery", "pediatric surgery",
+    "gim", "amau", "amu", "pulmonology", "gastroenterology", "endocrinology",
+    "diabetes", "renal", "nephrology", "rheumatology", "oncology", "dermatology",
+    "infectious diseases", "rehabilitation medicine", "geriatric", "care of the elderly",
+    "hdu", "dependency", "anaesthetic", "anaesthetics", "palliative",
+    "gynae", "obs", "maternity",
+    "resus", "pemed", "ed",
+    "ophthalmology", "vitreoretinal", "eyes", "eye clinic",
+    "ent", "otolaryngology", "head and neck surgery",
 ]
 CHAT_EXCLUDE_KEYWORDS = [
     "consultant", "nurse", "midwife", "assistant", "manager", "director", "admin",
@@ -101,7 +105,6 @@ SPECIALTY_CHANNELS = [
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
         "specialties": [ "surgery", "general surgery", "trauma", "orthopaedic", "plastic", "vascular", "urology", "neurosurgery", "pediatric surgery"],
-        "grades":      ["fy1", "fy2", "foundation", "st4", "st5", "st6", "st7", "ct1", "ct2", "ct3", "st1", "st2", "st3", "registrar", "trust", "doctor", "grade", "clinical", "fellow", "specialty", "junior", "locum", "teaching", "senior"],
         "excludes":    ["nurse", "consultant", "oral", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal", "dentist"],
     },
     {
@@ -113,7 +116,7 @@ SPECIALTY_CHANNELS = [
             "https://jobs.hscni.net/Search?SearchCatID=0",
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
-        "specialties": [    "general medicine", "internal medicine", "acute medicine", "acute medical", 
+        "specialties": [    "general medicine", "internal medicine", "acute medicine", "acute medical",
     "general internal medicine", "gim", "amau", "amu",
     "cardiology", "cardiac medicine",
     "respiratory", "chest medicine", "pulmonology",
@@ -128,8 +131,7 @@ SPECIALTY_CHANNELS = [
     "infectious diseases",
     "rehabilitation medicine",
     "care of the elderly", "geriatric", "medicine for the elderly"],
-        "grades":      ["fy1", "fy2", "foundation", "st4", "st5", "st6", "st7", "ct1", "ct2", "ct3", "st1", "st2", "st3", "registrar", "trust", "doctor", "grade", "clinical", "fellow", "specialty", "junior", "locum", "teaching", "senior"],
-        "excludes":    ["consultant", "nurse", "midwife", "assistant", "manager", "director", 
+        "excludes":    ["consultant", "nurse", "midwife", "assistant", "manager", "director",
     "admin", "physiotherapist", "radiographer", "lead", "scientist", 
     "receptionist", "housekeeper", "cook", "clerk", "practitioner", 
     "nutritionist", "nutrition", "coordinator", "therapist", "secretary", 
@@ -151,7 +153,6 @@ SPECIALTY_CHANNELS = [
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
         "specialties": ["dependency", "intensive care", "critical care", "icu", "hdu", "anesthesia", "anaesthesia", "anaesthetic", "anaesthetics", "palliative"],
-        "grades":      ["fy1", "fy2", "foundation", "st4", "st5", "st6", "st7", "ct1", "ct2", "ct3", "st1", "st2", "st3", "registrar", "trust", "doctor", "grade", "clinical", "fellow", "specialty", "junior", "locum", "teaching", "senior"],
         "excludes":    ["consultant", "nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
     },
     {
@@ -164,8 +165,7 @@ SPECIALTY_CHANNELS = [
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
         "specialties": ["pediatric", "pediatrics", "paediatric", "paediatrics"],
-        "grades":      ["fy1", "fy2", "foundation", "st4", "st5", "st6", "st7", "ct1", "ct2", "ct3", "st1", "st2", "st3", "registrar", "trust", "doctor", "grade", "clinical", "fellow", "specialty", "junior", "locum", "teaching", "senior"],
-        "excludes":    ["nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
+        "excludes":    ["consultant", "nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
     },
     {
         "name": "Obstetrics and Gynecology Jobs",
@@ -177,8 +177,7 @@ SPECIALTY_CHANNELS = [
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
         "specialties": ["obstetrics", "gynaecology", "gynecology", "obs", "gynae", "maternity"],
-        "grades":      ["fy1", "fy2", "foundation", "st4", "st5", "st6", "st7", "ct1", "ct2", "ct3", "st1", "st2", "st3", "registrar", "trust", "doctor", "grade", "clinical", "fellow", "specialty", "junior", "locum", "teaching", "senior"],
-        "excludes":    ["nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
+        "excludes":    ["consultant", "nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
     },
     {
         "name": "Emergency Medicine Jobs",
@@ -190,7 +189,6 @@ SPECIALTY_CHANNELS = [
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
         "specialties": ["emergency", "accident", "a&e", "ed ", "resus", "accident & emergency", "accident and emergency", "pemed"],
-        "grades":      ["fy1", "fy2", "foundation", "st4", "st5", "st6", "st7", "ct1", "ct2", "ct3", "st1", "st2", "st3", "registrar", "trust", "doctor", "grade", "clinical", "fellow", "specialty", "junior", "locum", "teaching", "senior"],
         "excludes":    ["consultant", "nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
     },
     {
@@ -203,7 +201,6 @@ SPECIALTY_CHANNELS = [
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
         "specialties": ["ophthalmology", "eyes", "eye clinic", "eye", "vitreoretinal"],
-        "grades":      ["fy1", "fy2", "foundation", "st4", "st5", "st6", "st7", "ct1", "ct2", "ct3", "st1", "st2", "st3", "registrar", "trust", "doctor", "grade", "clinical", "fellow", "specialty", "junior", "locum", "teaching", "senior"],
         "excludes":    ["consultant", "nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
     },
     {
@@ -216,7 +213,6 @@ SPECIALTY_CHANNELS = [
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
         "specialties": ["ent", "ear nose throat", "otolaryngology", "head and neck surgery"],
-        "grades":      ["fy1", "fy2", "foundation", "st4", "st5", "st6", "st7", "ct1", "ct2", "ct3", "st1", "st2", "st3", "registrar", "trust", "doctor", "grade", "clinical", "fellow", "specialty", "junior", "locum", "teaching", "senior"],
         "excludes":    ["consultant", "nurse", "midwife", "assistant", "manager", "director", "admin", "physiotherapist", "radiographer", "lead", "scientist", "receptionist", "housekeeper", "cook", "clerk", "practitioner", "nutritionist", "nutrition", "coordinator", "therapist", "secretary", "pharmacist", "matron", "worker", "pharmacy", "chief", "counseling", "principal"],
     },
 ]
@@ -351,8 +347,6 @@ def relevant_for_chat(title: str) -> bool:
         return False
     if not any(sp in t for sp in CHAT_SPECIALTIES):
         return False
-    if not any(gr in t for gr in CHAT_GRADE_KEYWORDS):
-        return False
     return True
 
 def relevant_for_early(title: str) -> bool:
@@ -373,8 +367,6 @@ def relevant_for_specialty(title: str, ch: dict) -> bool:
     if any(ex in t for ex in ch["excludes"]):
         return False
     if not any(_word_match(sp, t) for sp in ch["specialties"]):
-        return False
-    if not any(gr in t for gr in ch["grades"]):
         return False
     return True
 
