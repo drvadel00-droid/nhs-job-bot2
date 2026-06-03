@@ -218,6 +218,14 @@ EARLY_EXCLUDE_KEYWORDS = [
     "gp",
 ]
 
+# ================= SHARED GRADE KEYWORDS (appended to every specialty filter) ================= #
+_GRADE_KEYWORDS = [
+    "fy1", "fy2", "foundation", "st4", "st5", "st6", "st7",
+    "ct1", "ct2", "ct3", "st1", "st2", "st3", "registrar",
+    "trust", "doctor", "grade", "clinical", "fellow", "specialty",
+    "junior", "locum", "teaching", "senior",
+]
+
 # ================= SHARED EXCLUDE LIST ================= #
 _COMMON_EXCLUDES = [
     "consultant", "nurse", "midwife", "assistant", "manager", "director", "admin",
@@ -305,7 +313,7 @@ SPECIALTY_CHANNELS = [
             "https://jobs.hscni.net/Search?keyword=&SearchCatID=63&SearchOrgID=0&SearchBandID=0&Order=Added",
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
-        "specialties": [ "surgery", "general surgery", "trauma", "orthopaedic", "plastic", "vascular", "urology", "neurosurgery", "pediatric surgery"],
+        "specialties": _GRADE_KEYWORDS + ["surgery", "general surgery", "trauma", "orthopaedic", "plastic", "vascular", "urology", "neurosurgery", "pediatric surgery"],
         "excludes":    _COMMON_EXCLUDES + ["oral"],
     },
     {
@@ -317,7 +325,8 @@ SPECIALTY_CHANNELS = [
             "https://jobs.hscni.net/Search?keyword=&SearchCatID=63&SearchOrgID=0&SearchBandID=0&Order=Added",
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
-        "specialties": [    "general medicine", "internal medicine", "acute medicine", "acute medical",
+        "specialties": _GRADE_KEYWORDS + [
+    "general medicine", "internal medicine", "acute medicine", "acute medical",
     "general internal medicine", "gim", "amau", "amu",
     "cardiology", "cardiac medicine",
     "respiratory", "chest medicine", "pulmonology",
@@ -349,7 +358,7 @@ SPECIALTY_CHANNELS = [
             "https://jobs.hscni.net/Search?keyword=&SearchCatID=63&SearchOrgID=0&SearchBandID=0&Order=Added",
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
-        "specialties": ["dependency", "intensive care", "critical care", "icu", "hdu", "anesthesia", "anaesthesia", "anaesthetic", "anaesthetics", "palliative"],
+        "specialties": _GRADE_KEYWORDS + ["dependency", "intensive care", "critical care", "icu", "hdu", "anesthesia", "anaesthesia", "anaesthetic", "anaesthetics", "palliative"],
         "excludes":    _COMMON_EXCLUDES,
     },
     {
@@ -361,7 +370,7 @@ SPECIALTY_CHANNELS = [
             "https://jobs.hscni.net/Search?keyword=&SearchCatID=63&SearchOrgID=0&SearchBandID=0&Order=Added",
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
-        "specialties": ["pediatric", "pediatrics", "paediatric", "paediatrics"],
+        "specialties": _GRADE_KEYWORDS + ["pediatric", "pediatrics", "paediatric", "paediatrics"],
         "excludes":    _COMMON_EXCLUDES,
     },
     {
@@ -373,7 +382,7 @@ SPECIALTY_CHANNELS = [
             "https://jobs.hscni.net/Search?keyword=&SearchCatID=63&SearchOrgID=0&SearchBandID=0&Order=Added",
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
-        "specialties": ["obstetrics", "gynaecology", "gynecology", "obs", "gynae", "maternity"],
+        "specialties": _GRADE_KEYWORDS + ["obstetrics", "gynaecology", "gynecology", "obs", "gynae", "maternity"],
         "excludes":    _COMMON_EXCLUDES,
     },
     {
@@ -385,7 +394,7 @@ SPECIALTY_CHANNELS = [
             "https://jobs.hscni.net/Search?keyword=&SearchCatID=63&SearchOrgID=0&SearchBandID=0&Order=Added",
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
-        "specialties": ["emergency", "accident", "a&e", "ed ", "resus", "accident & emergency", "accident and emergency", "pemed"],
+        "specialties": _GRADE_KEYWORDS + ["emergency", "accident", "a&e", "ed ", "resus", "accident & emergency", "accident and emergency", "pemed"],
         "excludes":    _COMMON_EXCLUDES,
     },
     {
@@ -397,7 +406,7 @@ SPECIALTY_CHANNELS = [
             "https://jobs.hscni.net/Search?keyword=&SearchCatID=63&SearchOrgID=0&SearchBandID=0&Order=Added",
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
-        "specialties": ["ophthalmology", "eyes", "eye clinic", "eye", "vitreoretinal"],
+        "specialties": _GRADE_KEYWORDS + ["ophthalmology", "eyes", "eye clinic", "eye", "vitreoretinal"],
         "excludes":    _COMMON_EXCLUDES,
     },
     {
@@ -409,7 +418,7 @@ SPECIALTY_CHANNELS = [
             "https://jobs.hscni.net/Search?keyword=&SearchCatID=63&SearchOrgID=0&SearchBandID=0&Order=Added",
             "https://apply.jobs.scot.nhs.uk/Home/Job",
         ],
-        "specialties": ["ent", "ear nose throat", "otolaryngology", "head and neck surgery"],
+        "specialties": _GRADE_KEYWORDS + ["ent", "ear nose throat", "otolaryngology", "head and neck surgery"],
         "excludes":    _COMMON_EXCLUDES,
     },
 ]
