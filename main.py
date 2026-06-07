@@ -1042,7 +1042,7 @@ async def main():
                     cycle += 1
                     log(f"─── CYCLE {cycle} ───────────────────────────────")
                     try:
-                        await run_cycle(seen_jobs, browser, is_first_cycle=(cycle == -1))
+                        await run_cycle(seen_jobs, browser, is_first_cycle=(cycle == 1))
                     except Exception as e:
                         log(f"🔥 Cycle-level error (will continue): {e}")
                     log(f"💤 Sleeping {CHECK_INTERVAL}s …\n")
