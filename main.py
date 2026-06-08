@@ -131,7 +131,7 @@ CHAT_EXCLUDE_KEYWORDS = [
     "advanced clinical practitioner", "advanced nurse practitioner",
     "advanced practitioner", "anaesthesia associate",
     # misc
-    "gp",
+    "gp", "sister", "maxillofacial", "clerical", "oral",
 ]
 
 EARLY_SPECIALTIES = [
@@ -215,7 +215,7 @@ EARLY_EXCLUDE_KEYWORDS = [
     "advanced clinical practitioner", "advanced nurse practitioner",
     "advanced practitioner", "anaesthesia associate",
     # misc
-    "gp",
+    "gp", "sister", "maxillofacial", "clerical", "oral",
 ]
 
 # ================= SHARED EXCLUDE LIST ================= #
@@ -288,7 +288,7 @@ _COMMON_EXCLUDES = [
     "advanced clinical practitioner", "advanced nurse practitioner",
     "advanced practitioner", "anaesthesia associate",
     # misc
-    "gp",
+    "gp", "sister", "maxillofacial", "clerical", "oral",
 ]
 
 # ================= SPECIALTY WHOP CHANNELS ================= #
